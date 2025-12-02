@@ -1,0 +1,23 @@
+region_id,ingredient_id,price_total,pack_size,unit_base,valid_from,valid_to,source,source_ref_id
+500,I051,0.99,0.5,kg,2025-01-13,2025-01-19,REWE Prospekt,rewe_spaghetti_500g
+500,I020,6.99,1.0,kg,2025-01-13,2025-01-19,REWE Prospekt,rewe_hack_1kg
+500,I077,12.99,1.0,kg,2025-01-13,2025-01-19,REWE Prospekt,rewe_haehnchen_1kg
+500,I089,0.49,2.5,kg,2025-01-13,2025-01-19,REWE Prospekt,rewe_kartoffeln_2.5kg
+500,I003,1.49,10,st,2025-01-13,2025-01-19,REWE Prospekt,rewe_eier_10st
+500,I030,0.79,1.0,l,2025-01-13,2025-01-19,REWE Prospekt,rewe_milch_1l
+500,I045,1.99,0.5,kg,2025-01-13,2025-01-19,REWE Prospekt,rewe_brokkoli_500g
+500,I046,2.49,1.0,st,2025-01-13,2025-01-19,REWE Prospekt,rewe_paprika_1st
+500,I059,0.89,0.5,kg,2025-01-13,2025-01-19,REWE Prospekt,rewe_tomaten_500g
+510,I051,0.89,0.5,kg,2025-01-13,2025-01-19,Lidl Prospekt,lidl_spaghetti_500g
+510,I020,6.49,1.0,kg,2025-01-13,2025-01-19,Lidl Prospekt,lidl_hack_1kg
+510,I059,0.79,0.5,kg,2025-01-13,2025-01-19,Lidl Prospekt,lidl_tomaten_500g
+510,I044,4.99,0.4,kg,2025-01-13,2025-01-19,Lidl Prospekt,lidl_tofu_400g
+510,I089,0.39,2.5,kg,2025-01-13,2025-01-19,Lidl Prospekt,lidl_kartoffeln_2.5kg
+510,I003,1.39,10,st,2025-01-13,2025-01-19,Lidl Prospekt,lidl_eier_10st
+510,I030,0.69,1.0,l,2025-01-13,2025-01-19,Lidl Prospekt,lidl_milch_1l
+510,I045,1.79,0.5,kg,2025-01-13,2025-01-19,Lidl Prospekt,lidl_brokkoli_500g
+520,I051,0.95,0.5,kg,2025-01-13,2025-01-19,ALDI Prospekt,aldi_spaghetti_500g
+520,I020,6.79,1.0,kg,2025-01-13,2025-01-19,ALDI Prospekt,aldi_hack_1kg
+520,I089,0.45,2.5,kg,2025-01-13,2025-01-19,ALDI Prospekt,aldi_kartoffeln_2.5kg
+520,I003,1.59,10,st,2025-01-13,2025-01-19,ALDI Prospekt,aldi_eier_10st
+520,I030,0.75,1.0,l,2025-01-13,2025-01-19,ALDI Prospekt,aldi_milch_1l

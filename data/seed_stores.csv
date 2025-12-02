@@ -1,0 +1,8 @@
+store_id,chain_id,store_name,plz,city,street,lat,lon
+1000,10,REWE Hannover Nord,30165,Hannover,0,0,
+1001,10,REWE Hannover Südstadt,30171,Hannover,0,0,
+1002,10,REWE Berlin Mitte,10115,Berlin,0,0,
+1100,11,Lidl Hannover Linden,30449,Hannover,0,0,
+1101,11,Lidl Berlin Prenzlauer Berg,10437,Berlin,0,0,
+1201,12,ALDI Berlin Mitte,10115,Berlin,0,0,
+

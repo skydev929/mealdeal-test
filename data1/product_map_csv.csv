@@ -1,0 +1,3 @@
+aggregator_product_id,ingredient_id,confidence,notes
+AGG-REWE-12345,1,0.98,Spaghetti 500g → Spaghetti
+AGG-REWE-23456,2,0.95,Rinderhack 1kg → Rinderhackfleisch

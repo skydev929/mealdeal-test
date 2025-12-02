@@ -1,0 +1,4 @@
+store_id,chain_id,store_name,plz,city,street,lat,lon
+1000,10,REWE Hannover Nord,30165,Hannover,,,
+1001,10,REWE Hannover Südstadt,30171,Hannover,,,
+1100,11,Lidl Hannover Linden,30449,Hannover,,,

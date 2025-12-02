@@ -1,0 +1,4 @@
+region_id,chain_id,label
+500,10,REWE_H_NORD
+501,10,REWE_H_SUED
+510,11,LIDL_H_WEST

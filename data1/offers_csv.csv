@@ -1,0 +1,4 @@
+offer_id,region_id,ingredient_id,price_total,pack_size,unit_base,valid_from,valid_to,source,source_ref_id
+1,500,1,1.39,0.5,kg,2025-09-22,2025-09-28,REWE Prospekt KW39,rewe_kw39_spaghetti_500g
+2,500,2,6.99,1.0,kg,2025-09-22,2025-09-28,REWE Prospekt KW39,rewe_kw39_hack_1kg
+3,510,3,0.79,0.5,L,2025-09-22,2025-09-28,Lidl Prospekt KW39,lidl_kw39_passata_500ml
