@@ -84,6 +84,7 @@ export interface DishIngredient {
   ingredient_name: string;
   qty: number;
   unit: string;
+  unit_default?: string; // Ingredient's default unit (for price conversion)
   optional: boolean;
   role?: string;
   price_baseline_per_unit?: number;
@@ -134,10 +135,12 @@ class ApiService {
         })
       );
 
+      // Filter to show only dishes with available offers
+      let filtered = dishesWithPricing.filter((d) => d.availableOffers > 0);
+
       // Filter by max price if specified
-      let filtered = dishesWithPricing;
       if (filters?.maxPrice) {
-        filtered = dishesWithPricing.filter(
+        filtered = filtered.filter(
           (d) => d.currentPrice <= filters.maxPrice!
         );
       }
@@ -323,6 +326,7 @@ class ApiService {
           ingredient_name: ingredient ? ingredient.name_canonical : '',
           qty: di.qty,
           unit: di.unit,
+          unit_default: ingredient ? ingredient.unit_default : undefined,
           optional: di.optional || false,
           role: di.role || undefined,
           price_baseline_per_unit: ingredient ? ingredient.price_baseline_per_unit : undefined,

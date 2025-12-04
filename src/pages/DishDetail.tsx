@@ -129,16 +129,61 @@ export default function DishDetail() {
   const requiredIngredients = ingredients.filter((ing) => !ing.optional);
   const optionalIngredients = ingredients.filter((ing) => ing.optional);
 
-  // Calculate ingredient pricing totals
+  // Helper function to convert units (matches database logic)
+  const convertUnit = (qty: number, fromUnit: string, toUnit: string): number | null => {
+    if (!fromUnit || !toUnit) return null;
+    
+    const from = fromUnit.toLowerCase().trim();
+    const to = toUnit.toLowerCase().trim();
+
+    if (from === to) return qty;
+
+    // Weight conversions
+    if (from === 'g' && to === 'kg') return qty / 1000.0;
+    if (from === 'kg' && to === 'g') return qty * 1000.0;
+
+    // Volume conversions
+    if (from === 'ml' && to === 'l') return qty / 1000.0;
+    if (from === 'l' && to === 'ml') return qty * 1000.0;
+
+    // Piece units
+    if ((from === 'stück' || from === 'st') && (to === 'stück' || to === 'st')) {
+      return qty;
+    }
+
+    // Non-convertible units
+    return null;
+  };
+
+  // Calculate ingredient pricing with proper unit conversion
   const calculateIngredientPrice = (ing: DishIngredient): number => {
     if (ing.current_offer_price !== undefined) {
       return ing.current_offer_price;
     }
-    if (ing.price_baseline_per_unit) {
-      // Simple calculation - in real app would use unit conversion
+    if (ing.price_baseline_per_unit && ing.unit_default) {
+      // Convert qty from dish_ingredients.unit to ingredients.unit_default
+      const convertedQty = convertUnit(ing.qty, ing.unit, ing.unit_default);
+      if (convertedQty !== null) {
+        return convertedQty * ing.price_baseline_per_unit;
+      }
+      // If conversion not possible, try direct calculation (may be wrong for non-matching units)
+      // This handles cases like EL, TL, Bund where conversion isn't possible
       return ing.qty * ing.price_baseline_per_unit;
     }
     return 0;
+  };
+
+  // Calculate baseline price for display (with unit conversion)
+  const calculateBaselinePrice = (ing: DishIngredient): number | null => {
+    if (!ing.price_baseline_per_unit || !ing.unit_default) {
+      return null;
+    }
+    const convertedQty = convertUnit(ing.qty, ing.unit, ing.unit_default);
+    if (convertedQty !== null) {
+      return convertedQty * ing.price_baseline_per_unit;
+    }
+    // Fallback for non-convertible units
+    return ing.qty * ing.price_baseline_per_unit;
   };
 
   const totalIngredientPrice = ingredients.reduce(
@@ -304,17 +349,25 @@ export default function DishDetail() {
                             {ing.current_offer_price !== undefined ? (
                               <>
                                 <span className="text-green-600">€{ing.current_offer_price.toFixed(2)}</span>
-                                {ing.price_baseline_per_unit && (
-                                  <span className="text-xs text-muted-foreground line-through ml-2">
-                                    €{(ing.qty * ing.price_baseline_per_unit).toFixed(2)}
-                                  </span>
-                                )}
+                                {(() => {
+                                  const baselinePrice = calculateBaselinePrice(ing);
+                                  if (baselinePrice !== null && baselinePrice > ing.current_offer_price) {
+                                    return (
+                                      <span className="text-xs text-muted-foreground line-through ml-2">
+                                        €{baselinePrice.toFixed(2)}
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </>
-                            ) : ing.price_baseline_per_unit ? (
-                              <span>€{(ing.qty * ing.price_baseline_per_unit).toFixed(2)}</span>
-                            ) : (
-                              <span className="text-muted-foreground text-sm">N/A</span>
-                            )}
+                            ) : (() => {
+                              const baselinePrice = calculateBaselinePrice(ing);
+                              if (baselinePrice !== null) {
+                                return <span>€{baselinePrice.toFixed(2)}</span>;
+                              }
+                              return <span className="text-muted-foreground text-sm">N/A</span>;
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -347,11 +400,13 @@ export default function DishDetail() {
                           </div>
                           <div className="text-right">
                             <div className="font-medium text-muted-foreground">
-                              {ing.price_baseline_per_unit ? (
-                                <span>€{(ing.qty * ing.price_baseline_per_unit).toFixed(2)}</span>
-                              ) : (
-                                <span className="text-sm">N/A</span>
-                              )}
+                              {(() => {
+                                const baselinePrice = calculateBaselinePrice(ing);
+                                if (baselinePrice !== null) {
+                                  return <span>€{baselinePrice.toFixed(2)}</span>;
+                                }
+                                return <span className="text-sm">N/A</span>;
+                              })()}
                             </div>
                           </div>
                         </div>

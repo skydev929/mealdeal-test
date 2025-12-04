@@ -353,6 +353,81 @@ serve(async (req) => {
           .select();
         insertError = error;
         if (data) insertedCount = data.length;
+      } else if (tableType === 'ad_regions') {
+        // Ad regions uses region_id as primary key
+        const { error, data } = await supabaseClient
+          .from(tableType)
+          .upsert(validRows, { 
+            onConflict: 'region_id',
+            ignoreDuplicates: false 
+          })
+          .select();
+        insertError = error;
+        if (data) insertedCount = data.length;
+      } else if (tableType === 'stores') {
+        // Stores uses store_id as primary key
+        const { error, data } = await supabaseClient
+          .from(tableType)
+          .upsert(validRows, { 
+            onConflict: 'store_id',
+            ignoreDuplicates: false 
+          })
+          .select();
+        insertError = error;
+        if (data) insertedCount = data.length;
+      } else if (tableType === 'postal_codes') {
+        // Postal codes uses plz as primary key
+        const { error, data } = await supabaseClient
+          .from(tableType)
+          .upsert(validRows, { 
+            onConflict: 'plz',
+            ignoreDuplicates: false 
+          })
+          .select();
+        insertError = error;
+        if (data) insertedCount = data.length;
+      } else if (tableType === 'store_region_map') {
+        // Store region map has composite primary key (store_id, region_id)
+        // Supabase doesn't support composite keys in onConflict, so we need to insert one by one
+        for (const row of validRows) {
+          const { error, data } = await supabaseClient
+            .from(tableType)
+            .upsert(row, { 
+              onConflict: 'store_id,region_id',
+              ignoreDuplicates: false 
+            })
+            .select();
+          if (error) {
+            console.error(`Error inserting store_region_map row:`, row, error);
+            const rowIndex = validRows.indexOf(row) + 2; // +2 for header and 0-index
+            let errorMsg = error.message || 'Unknown error';
+            
+            // Enhance error message with context
+            if (error.message?.includes('foreign key')) {
+              if (error.message.includes('store_id')) {
+                errorMsg = `Store ID "${row.store_id}" not found. Import stores first.`;
+              } else if (error.message.includes('region_id')) {
+                errorMsg = `Region ID "${row.region_id}" not found. Import ad_regions first.`;
+              }
+            }
+            
+            result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
+            if (!insertError) insertError = error;
+            continue; // Continue with next row
+          }
+          if (data && data.length > 0) insertedCount++;
+        }
+      } else if (tableType === 'product_map') {
+        // Product map uses aggregator_product_id as primary key
+        const { error, data } = await supabaseClient
+          .from(tableType)
+          .upsert(validRows, { 
+            onConflict: 'aggregator_product_id',
+            ignoreDuplicates: false 
+          })
+          .select();
+        insertError = error;
+        if (data) insertedCount = data.length;
       } else if (tableType === 'dish_ingredients') {
         // Dish ingredients has composite primary key (dish_id, ingredient_id)
         // Supabase doesn't support composite keys in onConflict, so we need to insert one by one
