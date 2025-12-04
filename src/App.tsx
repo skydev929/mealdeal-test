@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/AdminDashboard";
 import Login from "./pages/Login";
+import DishDetail from "./pages/DishDetail";
 import RequireAuth from "./components/RequireAuth";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
@@ -23,6 +24,7 @@ const App = () => (
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<RequireAuth><Index /></RequireAuth>} />
+          <Route path="/dish/:dishId" element={<RequireAuth><DishDetail /></RequireAuth>} />
           <Route path="/admin/dashboard" element={<RequireAuth adminOnly><AdminDashboard /></RequireAuth>} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />

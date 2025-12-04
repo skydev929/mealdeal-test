@@ -78,6 +78,19 @@ export interface DishPricing {
   available_offers_count: number;
 }
 
+export interface DishIngredient {
+  dish_id: string;
+  ingredient_id: string;
+  ingredient_name: string;
+  qty: number;
+  unit: string;
+  optional: boolean;
+  role?: string;
+  price_baseline_per_unit?: number;
+  current_offer_price?: number;
+  has_offer: boolean;
+}
+
 // API Service Class
 class ApiService {
   // ============ DISHES ============
@@ -110,11 +123,6 @@ class ApiService {
         (data || []).map(async (dish) => {
           const pricing = await this.getDishPricing(dish.dish_id, filters?.plz);
           
-          // Log if pricing is missing or zero
-          if (!pricing || (pricing.base_price === 0 && pricing.offer_price === 0)) {
-            console.warn(`Dish ${dish.dish_id} (${dish.name}) has zero pricing. PLZ: ${filters?.plz || 'none'}`);
-          }
-          
           return {
             ...dish,
             currentPrice: pricing?.offer_price ?? pricing?.base_price ?? 0,
@@ -139,25 +147,76 @@ class ApiService {
         // Get chain_id from chain name
         const chain = await this.getChainByName(filters.chain);
         if (chain) {
-          // Filter dishes that have offers from this chain
-          const dishesWithChainOffers = await Promise.all(
-            filtered.map(async (dish) => {
-              const hasOffers = await this.dishHasChainOffers(
-                dish.dish_id,
-                chain.chain_id,
-                filters?.plz
+          // Get region_ids from PLZ if provided
+          let regionIds: number[] = [];
+          if (filters?.plz) {
+            const { data: postalData } = await supabase
+              .from('postal_codes')
+              .select('region_id')
+              .eq('plz', filters.plz);
+            if (postalData) {
+              regionIds = postalData.map((p) => p.region_id);
+            }
+          }
+
+          // If no PLZ or no regions found, get all regions for this chain
+          if (regionIds.length === 0) {
+            const { data: regions } = await supabase
+              .from('ad_regions')
+              .select('region_id')
+              .eq('chain_id', chain.chain_id);
+            if (regions) {
+              regionIds = regions.map((r) => r.region_id);
+            }
+          }
+
+          if (regionIds.length > 0) {
+            const today = new Date().toISOString().split('T')[0];
+            const dishIds = filtered.map((d) => d.dish_id);
+
+            // Get all ingredient_ids that have offers for this chain/region
+            const { data: offers } = await supabase
+              .from('offers')
+              .select('ingredient_id')
+              .in('region_id', regionIds)
+              .lte('valid_from', today)
+              .gte('valid_to', today);
+
+            if (offers && offers.length > 0) {
+              const ingredientIdsWithOffers = new Set(
+                offers.map((o) => o.ingredient_id)
               );
-              return hasOffers ? dish : null;
-            })
-          );
-          filtered = dishesWithChainOffers.filter((d) => d !== null) as Dish[];
+
+              // Get all dish_ingredients that match these ingredients and dishes
+              const { data: dishIngredients } = await supabase
+                .from('dish_ingredients')
+                .select('dish_id')
+                .in('dish_id', dishIds)
+                .in('ingredient_id', Array.from(ingredientIdsWithOffers))
+                .eq('optional', false);
+
+              const dishIdsWithOffers = new Set(
+                (dishIngredients || []).map((di) => di.dish_id)
+              );
+
+              filtered = filtered.filter((dish) => 
+                dishIdsWithOffers.has(dish.dish_id)
+              );
+            } else {
+              // No offers found for this chain/region
+              filtered = [];
+            }
+          } else {
+            // No regions found, filter out all dishes
+            filtered = [];
+          }
         }
       }
 
       return filtered;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching dishes:', error);
-      throw error;
+      throw new Error(error?.message || 'Failed to load dishes. Please try again.');
     }
   }
 
@@ -177,6 +236,130 @@ class ApiService {
     }
   }
 
+  async getDishIngredients(dishId: string, plz?: string | null): Promise<DishIngredient[]> {
+    try {
+      // Get region_id from PLZ if provided
+      let regionIds: number[] = [];
+      if (plz) {
+        const { data: postalData } = await supabase
+          .from('postal_codes')
+          .select('region_id')
+          .eq('plz', plz);
+        if (postalData) {
+          regionIds = postalData.map((p) => p.region_id);
+        }
+      }
+
+      // Get dish ingredients
+      const { data: dishIngredients, error: diError } = await supabase
+        .from('dish_ingredients')
+        .select('dish_id, ingredient_id, qty, unit, optional, role')
+        .eq('dish_id', dishId)
+        .order('optional', { ascending: true });
+
+      if (diError) throw diError;
+      if (!dishIngredients) return [];
+
+      // Get ingredient details separately
+      const ingredientIds = dishIngredients.map((di: any) => di.ingredient_id);
+      const { data: ingredientsData, error: ingError } = await supabase
+        .from('ingredients')
+        .select('ingredient_id, name_canonical, price_baseline_per_unit, unit_default')
+        .in('ingredient_id', ingredientIds);
+
+      if (ingError) throw ingError;
+
+      // Create a map of ingredient details
+      const ingredientsMap = new Map(
+        (ingredientsData || []).map((ing: any) => [ing.ingredient_id, ing])
+      );
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Get current offers for these ingredients if region available
+      let offers: any[] = [];
+      
+      if (regionIds.length > 0 && ingredientIds.length > 0) {
+        const { data: offersData } = await supabase
+          .from('offers')
+          .select('ingredient_id, price_total, pack_size, unit_base')
+          .in('ingredient_id', ingredientIds)
+          .in('region_id', regionIds)
+          .lte('valid_from', today)
+          .gte('valid_to', today);
+
+        if (offersData) {
+          offers = offersData;
+        }
+      }
+
+      // Map offers by ingredient_id
+      const offersMap = new Map(
+        offers.map((o) => [o.ingredient_id, o])
+      );
+
+      // Transform to DishIngredient format
+      return dishIngredients.map((di: any) => {
+        const ingredient = ingredientsMap.get(di.ingredient_id);
+        const offer = offersMap.get(di.ingredient_id);
+        
+        // Calculate offer price if available
+        let currentOfferPrice: number | undefined;
+        if (offer) {
+          // Convert qty to offer unit, then calculate price
+          const qtyInOfferUnit = this.convertUnitForPricing(
+            di.qty,
+            di.unit,
+            offer.unit_base
+          );
+          if (qtyInOfferUnit !== null && offer.pack_size > 0) {
+            currentOfferPrice = (qtyInOfferUnit / offer.pack_size) * offer.price_total;
+          }
+        }
+
+        return {
+          dish_id: di.dish_id,
+          ingredient_id: di.ingredient_id,
+          ingredient_name: ingredient ? ingredient.name_canonical : '',
+          qty: di.qty,
+          unit: di.unit,
+          optional: di.optional || false,
+          role: di.role || undefined,
+          price_baseline_per_unit: ingredient ? ingredient.price_baseline_per_unit : undefined,
+          current_offer_price: currentOfferPrice,
+          has_offer: !!offer,
+        };
+      });
+    } catch (error: any) {
+      console.error('Error fetching dish ingredients:', error);
+      return [];
+    }
+  }
+
+  // Helper to convert units (simplified version matching database logic)
+  private convertUnitForPricing(qty: number, fromUnit: string, toUnit: string): number | null {
+    const from = fromUnit.toLowerCase().trim();
+    const to = toUnit.toLowerCase().trim();
+
+    if (from === to) return qty;
+
+    // Weight conversions
+    if (from === 'g' && to === 'kg') return qty / 1000.0;
+    if (from === 'kg' && to === 'g') return qty * 1000.0;
+
+    // Volume conversions
+    if (from === 'ml' && to === 'l') return qty / 1000.0;
+    if (from === 'l' && to === 'ml') return qty * 1000.0;
+
+    // Piece units
+    if ((from === 'stück' || from === 'st') && (to === 'stück' || to === 'st')) {
+      return qty;
+    }
+
+    // Non-convertible units
+    return null;
+  }
+
   async getDishPricing(
     dishId: string,
     plz?: string | null
@@ -193,21 +376,13 @@ class ApiService {
       }
       
       if (!data || data.length === 0) {
-        console.warn(`No pricing data returned for dish ${dishId}`);
         return null;
       }
 
-      const result = data[0];
-      console.log(`Pricing for ${dishId}:`, {
-        base_price: result.base_price,
-        offer_price: result.offer_price,
-        savings: result.savings,
-        offers_count: result.available_offers_count,
-      });
-
-      return result;
-    } catch (error) {
+      return data[0];
+    } catch (error: any) {
       console.error('Error calculating dish price:', error);
+      // Return null to allow dishes to show with zero pricing rather than failing completely
       return null;
     }
   }
@@ -343,9 +518,9 @@ class ApiService {
         .eq('id', userId);
 
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating user PLZ:', error);
-      throw error;
+      throw new Error(error?.message || 'Failed to update location. Please try again.');
     }
   }
 
@@ -372,9 +547,12 @@ class ApiService {
         .insert({ user_id: userId, dish_id: dishId });
 
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding favorite:', error);
-      throw error;
+      if (error?.code === '23505') {
+        throw new Error('This dish is already in your favorites');
+      }
+      throw new Error(error?.message || 'Failed to add favorite. Please try again.');
     }
   }
 
@@ -387,9 +565,9 @@ class ApiService {
         .eq('dish_id', dishId);
 
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error removing favorite:', error);
-      throw error;
+      throw new Error(error?.message || 'Failed to remove favorite. Please try again.');
     }
   }
 
@@ -442,19 +620,6 @@ class ApiService {
       formData.append('type', type);
       formData.append('dryRun', dryRun.toString());
 
-      console.log('Calling import-csv function with:', { type, dryRun, fileName: file.name });
-
-      for (const [key, value] of formData.entries()) {
-        console.log(key, value);
-      }
-      
-      const reader = new FileReader();
-      reader.onload = () => {
-        console.log("CSV file content:");
-        console.log(reader.result);
-      };
-      reader.readAsText(file);
-
       // Use Supabase Edge Function if available, otherwise handle client-side
       const { data, error } = await supabase.functions.invoke('import-csv', {
         body: formData,
@@ -465,15 +630,12 @@ class ApiService {
         throw error;
       }
 
-      console.log('Edge function response:', data);
-
       const result = {
         validRows: data?.validRows || 0,
         errors: data?.errors || [],
         imported: data?.imported !== undefined ? data.imported : (dryRun ? undefined : 0),
       };
 
-      console.log('Parsed result:', result);
       return result;
     } catch (error: any) {
       console.error('Error importing CSV:', error);

@@ -7,8 +7,9 @@ import { DishFilters as DishFiltersComponent } from '@/components/DishFilters';
 import { DishCard } from '@/components/DishCard';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShoppingCart, Sparkles, Lock, LogOut, ArrowUpDown } from 'lucide-react';
+import { ShoppingCart, Sparkles, LogOut, ArrowUpDown, Heart } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Index() {
   const { userId, loading: authLoading, updatePLZ, signOut } = useAuth();
@@ -24,8 +25,8 @@ export default function Index() {
   const [sortBy, setSortBy] = useState<'price' | 'savings' | 'name'>('price');
   const [loading, setLoading] = useState(true);
   const [userPLZ, setUserPLZ] = useState<string>('');
-
-  console.log('userId === >', userId);
+  const [viewMode, setViewMode] = useState<'all' | 'favorites'>('all');
+  const [favoriteDishIds, setFavoriteDishIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (userId) {
@@ -36,9 +37,15 @@ export default function Index() {
 
   useEffect(() => {
     if (userId) {
+      loadFavorites();
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (userId) {
       loadDishes();
     }
-  }, [userId, selectedCategory, selectedChain, maxPrice, userPLZ, showQuickMeals, showMealPrep]);
+  }, [userId, selectedCategory, selectedChain, maxPrice, userPLZ, showQuickMeals, showMealPrep, viewMode]);
 
   const loadUserData = async () => {
     if (!userId) return;
@@ -67,6 +74,16 @@ export default function Index() {
     }
   };
 
+  const loadFavorites = async () => {
+    if (!userId) return;
+    try {
+      const favorites = await api.getFavorites(userId);
+      setFavoriteDishIds(favorites);
+    } catch (error) {
+      console.error('Error loading favorites:', error);
+    }
+  };
+
   const loadDishes = async () => {
     if (!userId) return;
 
@@ -81,10 +98,17 @@ export default function Index() {
         isMealPrep: showMealPrep ? true : undefined,
       };
 
-      const dishesData = await api.getDishes(filters, 100); 
+      let dishesData = await api.getDishes(filters, 100); 
 
       // Load favorites for user
       const favorites = await api.getFavorites(userId);
+      setFavoriteDishIds(favorites);
+
+      // Filter to favorites only if in favorites view
+      if (viewMode === 'favorites') {
+        dishesData = dishesData.filter((dish) => favorites.includes(dish.dish_id));
+      }
+
       const dishesWithFavorites: Dish[] = dishesData.map((dish) => ({
         ...dish,
         isFavorite: favorites.includes(dish.dish_id),
@@ -94,9 +118,9 @@ export default function Index() {
       const sortedDishes = sortDishes(dishesWithFavorites, sortBy);
 
       setDishes(sortedDishes);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading dishes:', error);
-      toast.error('Failed to load dishes');
+      toast.error(error?.message || 'Failed to load dishes. Please refresh the page.');
     } finally {
       setLoading(false);
     }
@@ -130,9 +154,9 @@ export default function Index() {
       await updatePLZ(plz); // Also update via auth hook for consistency
       setUserPLZ(plz);
       // loadDishes will be triggered by useEffect
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating PLZ:', error);
-      toast.error('Failed to update location');
+      toast.error(error?.message || 'Failed to update location. Please check your postal code and try again.');
     }
   };
 
@@ -145,20 +169,15 @@ export default function Index() {
         await api.removeFavorite(userId, dishId);
         toast.success('Removed from favorites');
       } else {
-        // Check if user has access (paywall placeholder)
-        toast.info('This is a premium feature', {
-          description: 'Upgrade to save your favorite dishes',
-          icon: <Lock className="h-4 w-4" />,
-        });
-        // Uncomment when paywall is removed:
-        // await api.addFavorite(userId, dishId);
-        // toast.success('Added to favorites');
+        await api.addFavorite(userId, dishId);
+        toast.success('Added to favorites');
       }
-      // Reload dishes to update favorite status
+      // Reload favorites and dishes to update favorite status
+      await loadFavorites();
       loadDishes();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error toggling favorite:', error);
-      toast.error('Failed to update favorite');
+      toast.error(error?.message || 'Failed to update favorite. Please try again.');
     }
   };
 
@@ -237,51 +256,97 @@ export default function Index() {
           </aside>
 
           <main className="lg:col-span-3">
-            <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <h3 className="text-2xl font-bold">Available Meals</h3>
-                <p className="text-muted-foreground">
-                  {dishes.length} {dishes.length === 1 ? 'dish' : 'dishes'} found
-                  {userPLZ && ` for PLZ ${userPLZ}`}
-                </p>
+            <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as 'all' | 'favorites')} className="w-full">
+              <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
+                <div className="flex-1">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="all" className="flex items-center gap-2">
+                      <ShoppingCart className="h-4 w-4" />
+                      All Meals
+                    </TabsTrigger>
+                    <TabsTrigger value="favorites" className="flex items-center gap-2">
+                      <Heart className="h-4 w-4" />
+                      Favorites
+                      {favoriteDishIds.length > 0 && (
+                        <span className="ml-1 px-1.5 py-0.5 text-xs bg-primary/20 text-primary rounded-full">
+                          {favoriteDishIds.length}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+                  <p className="text-muted-foreground">
+                    {viewMode === 'favorites' 
+                      ? `${dishes.length} ${dishes.length === 1 ? 'favorite dish' : 'favorite dishes'}`
+                      : `${dishes.length} ${dishes.length === 1 ? 'dish' : 'dishes'} found`}
+                    {userPLZ && ` for PLZ ${userPLZ}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+                  <Select value={sortBy} onValueChange={handleSortChange}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="price">Price (Low)</SelectItem>
+                      <SelectItem value="savings">Savings (High)</SelectItem>
+                      <SelectItem value="name">Name (A-Z)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-                <Select value={sortBy} onValueChange={handleSortChange}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="price">Price (Low)</SelectItem>
-                    <SelectItem value="savings">Savings (High)</SelectItem>
-                    <SelectItem value="name">Name (A-Z)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {dishes.map((dish) => (
-                <DishCard key={dish.dish_id} dish={dish} onFavorite={handleFavorite} />
-              ))}
-            </div>
+              <TabsContent value="all" className="mt-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {dishes.map((dish) => (
+                    <DishCard key={dish.dish_id} dish={dish} onFavorite={handleFavorite} />
+                  ))}
+                </div>
 
-            {dishes.length === 0 && !loading && (
-              <div className="text-center py-12 space-y-4">
-                <div className="text-6xl mb-4">🍽️</div>
-                <h4 className="text-xl font-semibold">No dishes found</h4>
-                <p className="text-muted-foreground max-w-md mx-auto">
-                  {!userPLZ 
-                    ? 'Enter your postal code to see dishes with current offers in your area.'
-                    : 'Try adjusting your filters or check back later for new offers.'}
-                </p>
-                {!userPLZ && (
-                  <div className="max-w-md mx-auto mt-4">
-                    <PLZInput onPLZChange={handlePLZChange} currentPLZ={userPLZ} />
+                {dishes.length === 0 && !loading && (
+                  <div className="text-center py-12 space-y-4">
+                    <div className="text-6xl mb-4">🍽️</div>
+                    <h4 className="text-xl font-semibold">No dishes found</h4>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      {!userPLZ 
+                        ? 'Enter your postal code to see dishes with current offers in your area.'
+                        : 'Try adjusting your filters or check back later for new offers.'}
+                    </p>
+                    {!userPLZ && (
+                      <div className="max-w-md mx-auto mt-4">
+                        <PLZInput onPLZChange={handlePLZChange} currentPLZ={userPLZ} />
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
+              </TabsContent>
+
+              <TabsContent value="favorites" className="mt-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {dishes.map((dish) => (
+                    <DishCard key={dish.dish_id} dish={dish} onFavorite={handleFavorite} />
+                  ))}
+                </div>
+
+                {dishes.length === 0 && !loading && (
+                  <div className="text-center py-12 space-y-4">
+                    <Heart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                    <h4 className="text-xl font-semibold">No favorite dishes yet</h4>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      Start adding dishes to your favorites by clicking the heart icon on any dish card.
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setViewMode('all')}
+                      className="mt-4"
+                    >
+                      Browse All Meals
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+
           </main>
         </div>
       </div>

@@ -17,14 +17,23 @@ export function PLZInput({ onPLZChange, currentPLZ }: PLZInputProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (plz.length !== 5 || !/^\d+$/.test(plz)) {
-      toast.error('Please enter a valid 5-digit postal code');
+    const trimmedPLZ = plz.trim();
+    
+    // Validate German PLZ format (5 digits, range 01000-99999)
+    if (trimmedPLZ.length !== 5 || !/^\d{5}$/.test(trimmedPLZ)) {
+      toast.error('Please enter a valid 5-digit postal code (e.g., 10115)');
+      return;
+    }
+    
+    const plzNum = parseInt(trimmedPLZ, 10);
+    if (plzNum < 1000 || plzNum > 99999) {
+      toast.error('Postal code must be between 01000 and 99999');
       return;
     }
 
     setIsLoading(true);
     try {
-      await onPLZChange(plz);
+      await onPLZChange(trimmedPLZ);
       toast.success('Location updated');
     } catch (error) {
       toast.error('Failed to update location');
@@ -44,7 +53,11 @@ export function PLZInput({ onPLZChange, currentPLZ }: PLZInputProps) {
             type="text"
             placeholder="Enter PLZ (e.g., 10115)"
             value={plz}
-            onChange={(e) => setPLZ(e.target.value)}
+            onChange={(e) => {
+              // Only allow digits, max 5 characters
+              const value = e.target.value.replace(/\D/g, '').slice(0, 5);
+              setPLZ(value);
+            }}
             maxLength={5}
             className="pl-10"
             disabled={isLoading}

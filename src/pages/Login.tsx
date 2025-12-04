@@ -61,7 +61,6 @@ export default function Login() {
       // Check if user has admin role
       const isAdmin = roles?.some((r: any) => r.role === 'admin') || false;
       
-      console.log('Login - User roles:', roles, 'Is Admin:', isAdmin);
       
       if (isAdmin) {
         toast.success('Welcome back, admin!');

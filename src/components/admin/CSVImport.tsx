@@ -53,9 +53,6 @@ export function CSVImport() {
     try {
       const result = await api.importCSV(file, selectedType, dryRun);
 
-      console.log('CSV Import Result:', result);
-      console.log('Dry run mode:', dryRun);
-
       // Store result for display
       setImportResult(result);
 
@@ -75,7 +72,6 @@ export function CSVImport() {
             duration: 8000,
           });
         } else if (result.imported === undefined) {
-          console.warn('imported is undefined - function may not have been redeployed');
           toast.warning(`Import completed but count unavailable. ${result.validRows} rows were validated.`);
         } else {
           toast.success(`Import complete: ${result.imported} rows imported successfully`);

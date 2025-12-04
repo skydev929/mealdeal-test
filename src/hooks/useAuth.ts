@@ -15,8 +15,6 @@ export const useAuth = () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
 
-        console.log('useAuth init - session:', session);
-
         if (session?.user && isMounted) {
           currentAuthUserIdRef.current = session.user.id;
           await syncProfileAndRole(session.user.id);
@@ -156,8 +154,6 @@ export const useAuth = () => {
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
 
-    console.log('signUp data:', data);
-
     // If a user object is returned (auto-confirmed), create profile immediately
     const createdUser = data?.user;
     if (createdUser) {
@@ -172,8 +168,6 @@ export const useAuth = () => {
 
         if (functionError) {
           // Fallback to direct insert if function doesn't exist
-          console.log('Function not available, trying direct insert:', functionError);
-          
           const { error: profileError } = await supabase.from('user_profiles').insert({
             id: createdUser.id,
             email,
@@ -207,7 +201,6 @@ export const useAuth = () => {
     } else {
       // Email confirmation required - profile will be created when user confirms email
       // The trigger will handle profile creation automatically
-      console.log('Email confirmation required. Profile will be created after email verification.');
     }
 
     return data;

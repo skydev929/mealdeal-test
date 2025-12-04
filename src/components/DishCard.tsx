@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ interface DishCardProps {
 }
 
 export function DishCard({ dish, onFavorite }: DishCardProps) {
+  const navigate = useNavigate();
   const savingsPercent = dish.savingsPercent !== undefined 
     ? dish.savingsPercent 
     : (dish.basePrice && dish.savings 
@@ -31,8 +33,20 @@ export function DishCard({ dish, onFavorite }: DishCardProps) {
   const hasOffers = (dish.availableOffers ?? 0) > 0;
   const hasSavings = dish.savings && dish.savings > 0;
 
+  const handleCardClick = () => {
+    navigate(`/dish/${dish.dish_id}`);
+  };
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onFavorite?.(dish.dish_id);
+  };
+
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow flex flex-col h-full">
+    <Card 
+      className="overflow-hidden hover:shadow-lg transition-shadow flex flex-col h-full cursor-pointer"
+      onClick={handleCardClick}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
@@ -41,7 +55,7 @@ export function DishCard({ dish, onFavorite }: DishCardProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => onFavorite?.(dish.dish_id)}
+                onClick={handleFavoriteClick}
                 className="shrink-0 h-8 w-8"
               >
                 <Heart
