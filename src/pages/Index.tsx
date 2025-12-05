@@ -7,12 +7,21 @@ import { DishFilters as DishFiltersComponent } from '@/components/DishFilters';
 import { DishCard } from '@/components/DishCard';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShoppingCart, Sparkles, LogOut, ArrowUpDown, Heart } from 'lucide-react';
+import { ShoppingCart, Sparkles, LogOut, ArrowUpDown, Heart, User, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export default function Index() {
-  const { userId, loading: authLoading, updatePLZ, signOut } = useAuth();
+  const { userId, loading: authLoading, updatePLZ, signOut, userProfile } = useAuth();
   const navigate = useNavigate();
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -253,10 +262,49 @@ export default function Index() {
               <ShoppingCart className="h-6 w-6 text-primary" />
               <h1 className="text-2xl font-bold">MealDeal</h1>
             </div>
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-primary/10 text-primary">
+                      {userProfile?.username 
+                        ? userProfile.username.charAt(0).toUpperCase()
+                        : userProfile?.email 
+                        ? userProfile.email.charAt(0).toUpperCase()
+                        : 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="hidden md:flex flex-col items-start">
+                    <span className="text-sm font-medium">
+                      {userProfile?.username || userProfile?.email || 'User'}
+                    </span>
+                    {userProfile?.username && userProfile?.email && (
+                      <span className="text-xs text-muted-foreground">{userProfile.email}</span>
+                    )}
+                  </div>
+                  <ChevronDown className="h-4 w-4 hidden md:block" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {userProfile?.username || 'User'}
+                    </p>
+                    {userProfile?.email && (
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {userProfile.email}
+                      </p>
+                    )}
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Sign Out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -307,7 +355,7 @@ export default function Index() {
                   <TabsList className="mb-4">
                     <TabsTrigger value="all" className="flex items-center gap-2">
                       <ShoppingCart className="h-4 w-4" />
-                      All Meals
+                      Available Meals
                     </TabsTrigger>
                     <TabsTrigger value="favorites" className="flex items-center gap-2">
                       <Heart className="h-4 w-4" />

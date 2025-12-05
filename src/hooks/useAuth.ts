@@ -5,6 +5,7 @@ export const useAuth = () => {
   const [userId, setUserId] = useState<string | null>(null); // profile id
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<{ username?: string; email?: string } | null>(null);
   const currentAuthUserIdRef = useRef<string | null>(null);
   const hasSyncedRef = useRef(false);
 
@@ -53,6 +54,7 @@ export const useAuth = () => {
             if (isMounted) {
               setUserId(null);
               setRole(null);
+              setUserProfile(null);
             }
           } finally {
             if (isMounted) {
@@ -67,6 +69,7 @@ export const useAuth = () => {
         if (isMounted) {
           setUserId(null);
           setRole(null);
+          setUserProfile(null);
           setLoading(false);
         }
       }
@@ -83,15 +86,16 @@ export const useAuth = () => {
       // Ensure a user_profiles row exists with id = auth user id
       const { data: profile, error: selErr } = await supabase
         .from('user_profiles')
-        .select('id, plz')
+        .select('id, plz, username, email')
         .eq('id', authUserId)
         .single();
 
       if (!profile) {
+        const authUser = (await supabase.auth.getUser()).data.user;
         const { data: inserted, error: insertError } = await supabase
           .from('user_profiles')
-          .insert({ id: authUserId, email: (await supabase.auth.getUser()).data.user?.email })
-          .select()
+          .insert({ id: authUserId, email: authUser?.email })
+          .select('id, username, email')
           .single();
 
         if (insertError) {
@@ -101,9 +105,17 @@ export const useAuth = () => {
 
         if (inserted) {
           setUserId(inserted.id);
+          setUserProfile({
+            username: inserted.username || undefined,
+            email: inserted.email || authUser?.email || undefined,
+          });
         }
       } else {
         setUserId(profile.id);
+        setUserProfile({
+          username: profile.username || undefined,
+          email: profile.email || undefined,
+        });
       }
 
       // Get roles for the profile
@@ -224,6 +236,7 @@ export const useAuth = () => {
     await supabase.auth.signOut();
     setUserId(null);
     setRole(null);
+    setUserProfile(null);
   };
 
   const updatePLZ = async (plz: string) => {
@@ -235,7 +248,7 @@ export const useAuth = () => {
     if (error) throw error;
   };
 
-  return { userId, loading, role, signIn, signUp, signOut, updatePLZ } as const;
+  return { userId, loading, role, userProfile, signIn, signUp, signOut, updatePLZ } as const;
 };
 
 export default useAuth;
