@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function Index() {
   const { userId, loading: authLoading, updatePLZ, signOut, userProfile } = useAuth();
@@ -262,7 +263,9 @@ export default function Index() {
               <ShoppingCart className="h-6 w-6 text-primary" />
               <h1 className="text-2xl font-bold">MealDeal</h1>
             </div>
-            <DropdownMenu>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
@@ -305,6 +308,7 @@ export default function Index() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           </div>
         </div>
       </header>

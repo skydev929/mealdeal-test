@@ -6,6 +6,7 @@ import { CSVImport } from '@/components/admin/CSVImport';
 import { DataTable } from '@/components/admin/DataTable';
 import { LogOut, Database } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function AdminDashboard() {
   const { isAdmin, loading, signOut } = useAdminAuth();
@@ -37,10 +38,13 @@ export default function AdminDashboard() {
             <Database className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">MealDeal Admin</h1>
           </div>
-          <Button variant="outline" onClick={signOut}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="outline" onClick={signOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
+          </div>
         </div>
       </header>
 

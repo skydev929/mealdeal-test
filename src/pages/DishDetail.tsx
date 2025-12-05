@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function DishDetail() {
   const { dishId } = useParams<{ dishId: string }>();
@@ -205,14 +206,17 @@ export default function DishDetail() {
                 <h1 className="text-2xl font-bold">MealDeal</h1>
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleFavorite}>
-              <Heart
-                className={cn(
-                  'h-5 w-5',
-                  isFavorite && 'fill-destructive text-destructive'
-                )}
-              />
-            </Button>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Button variant="ghost" size="icon" onClick={handleFavorite}>
+                <Heart
+                  className={cn(
+                    'h-5 w-5',
+                    isFavorite && 'fill-destructive text-destructive'
+                  )}
+                />
+              </Button>
+            </div>
           </div>
         </div>
       </header>
