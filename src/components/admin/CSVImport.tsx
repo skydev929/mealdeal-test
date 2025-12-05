@@ -21,7 +21,6 @@ const CSV_TYPES = {
   dishes: 'Dishes',
   dish_ingredients: 'Dish-Ingredients',
   offers: 'Offers',
-  product_map: 'Product Mapping',
   postal_codes: 'Postal Codes',
 };
 

@@ -127,8 +127,10 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center">Sign In</CardTitle>
-          <CardDescription className="text-center">Sign in to access MealDeal features</CardDescription>
+          <CardTitle className="text-2xl text-center">{isSignUp ? 'Sign Up' : 'Sign In'}</CardTitle>
+          <CardDescription className="text-center">
+            {isSignUp ? 'Create an account to access MealDeal features' : 'Sign in to access MealDeal features'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

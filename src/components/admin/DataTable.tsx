@@ -16,9 +16,6 @@ const TABLES = {
   store_region_map: 'Store-Region Map',
   postal_codes: 'Postal Codes',
   dish_ingredients: 'Dish Ingredients',
-  product_map: 'Product Map',
-  user_profiles: 'User Profiles',
-  favorites: 'Favorites',
 };
 
 export function DataTable() {
