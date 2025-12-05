@@ -11,73 +11,176 @@ export const useAuth = () => {
 
   useEffect(() => {
     let isMounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
+    let initialSessionLoaded = false; // Flag to track if initial session restoration is complete
 
     const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
+      // Set a timeout to ensure loading doesn't hang forever
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          console.warn('Auth init timeout - clearing loading state');
+          setLoading(false);
+        }
+      }, 10000); // 10 second timeout
 
+      try {
+        // STEP 1: Read session from sessionStorage FIRST (Best Practice)
+        // This restores the session before any listeners can interfere
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+        
+        // STEP 2: Validate session with getUser() (Best Practice - keep this)
+        // This ensures the token is still valid and not revoked
+        if (currentSession) {
+          try {
+            const { data: { user }, error: userError } = await supabase.auth.getUser();
+            if (!user || userError) {
+              // Token is invalid or revoked, clear it
+              console.warn('Invalid session token, clearing');
+              await supabase.auth.signOut();
+              if (isMounted) {
+                setUserId(null);
+                setRole(null);
+                setUserProfile(null);
+              }
+              return;
+            }
+          } catch (userError) {
+            // Network error or other issue - don't clear session immediately
+            // Trust Supabase's autoRefreshToken to handle it
+            console.warn('Error validating session, but keeping it:', userError);
+            // Continue with session restoration
+          }
+        }
+
+        const session = currentSession;
+
+        // STEP 3: Restore session state
         if (session?.user && isMounted) {
           currentAuthUserIdRef.current = session.user.id;
-          await syncProfileAndRole(session.user.id);
-          hasSyncedRef.current = true;
+          try {
+            await syncProfileAndRole(session.user.id);
+            hasSyncedRef.current = true;
+          } catch (syncError) {
+            console.error('Error syncing profile in init:', syncError);
+            // Even if sync fails, we have a valid session
+            // Set userId to auth user id so user stays logged in
+            if (isMounted) {
+              setUserId(session.user.id);
+              setRole('user');
+              setUserProfile({
+                email: session.user.email || undefined,
+              });
+            }
+          }
+        } else if (isMounted) {
+          // No session found in storage
+          setUserId(null);
+          setRole(null);
+          setUserProfile(null);
         }
+
+        // Mark initial session load as complete
+        initialSessionLoaded = true;
+
+        // STEP 4: NOW register onAuthStateChange listener AFTER session is restored
+        // This prevents the listener from firing with null before session is loaded
+        const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (!isMounted) return;
+
+          // Ignore initial null events if we just loaded a session
+          // Only process events after initial session restoration
+          if (!initialSessionLoaded && !session) {
+            return; // Ignore initial null event
+          }
+
+          // Only sync if the user ID actually changed or if we haven't synced yet
+          const newAuthUserId = session?.user?.id || null;
+          const authUserIdChanged = newAuthUserId !== currentAuthUserIdRef.current;
+          const needsSync = authUserIdChanged || (newAuthUserId && !hasSyncedRef.current);
+
+          if (session?.user) {
+            currentAuthUserIdRef.current = session.user.id;
+            
+            if (needsSync) {
+              setLoading(true);
+              try {
+                await syncProfileAndRole(session.user.id);
+                hasSyncedRef.current = true;
+              } catch (error) {
+                console.error('Error in auth state change:', error);
+                // Keep user logged in with session but use defaults
+                if (isMounted) {
+                  setUserId(session.user.id);
+                  setRole('user');
+                  setUserProfile({
+                    email: session.user.email || undefined,
+                  });
+                }
+              } finally {
+                if (isMounted) {
+                  setLoading(false);
+                }
+              }
+            } else {
+              if (isMounted) {
+                setLoading(false);
+              }
+            }
+          } else {
+            // No session -> clear state (only after initial load)
+            if (initialSessionLoaded) {
+              currentAuthUserIdRef.current = null;
+              hasSyncedRef.current = false;
+              if (isMounted) {
+                setUserId(null);
+                setRole(null);
+                setUserProfile(null);
+                setLoading(false);
+              }
+            }
+          }
+        });
+        subscription = authSubscription;
       } catch (error) {
         console.error('useAuth init error', error);
+        // On error, try to restore session one more time
+        try {
+          const { data: { session: errorSession } } = await supabase.auth.getSession();
+          if (errorSession?.user && isMounted) {
+            setUserId(errorSession.user.id);
+            setRole('user');
+            setUserProfile({
+              email: errorSession.user.email || undefined,
+            });
+          } else if (isMounted) {
+            setUserId(null);
+            setRole(null);
+            setUserProfile(null);
+          }
+        } catch (sessionError) {
+          if (isMounted) {
+            setUserId(null);
+            setRole(null);
+            setUserProfile(null);
+          }
+        }
+        initialSessionLoaded = true;
       } finally {
+        clearTimeout(timeoutId);
         if (isMounted) {
           setLoading(false);
         }
       }
     };
 
+    // Start initialization
     init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!isMounted) return;
-
-      // Only sync if the user ID actually changed or if we haven't synced yet
-      const newAuthUserId = session?.user?.id || null;
-      const authUserIdChanged = newAuthUserId !== currentAuthUserIdRef.current;
-      const needsSync = authUserIdChanged || (newAuthUserId && !hasSyncedRef.current);
-
-      if (session?.user) {
-        currentAuthUserIdRef.current = session.user.id;
-        
-        // Only set loading and sync if we actually need to
-        if (needsSync) {
-          setLoading(true);
-          try {
-            await syncProfileAndRole(session.user.id);
-            hasSyncedRef.current = true;
-          } catch (error) {
-            console.error('Error in auth state change:', error);
-            if (isMounted) {
-              setUserId(null);
-              setRole(null);
-              setUserProfile(null);
-            }
-          } finally {
-            if (isMounted) {
-              setLoading(false);
-            }
-          }
-        }
-      } else {
-        // No session -> clear state
-        currentAuthUserIdRef.current = null;
-        hasSyncedRef.current = false;
-        if (isMounted) {
-          setUserId(null);
-          setRole(null);
-          setUserProfile(null);
-          setLoading(false);
-        }
-      }
-    });
 
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe();
+      }
     };
   }, []);
 
@@ -89,6 +192,12 @@ export const useAuth = () => {
         .select('id, plz, username, email')
         .eq('id', authUserId)
         .single();
+
+      if (selErr && selErr.code !== 'PGRST116') {
+        // PGRST116 = no rows found, which is expected for new users
+        console.error('Error fetching profile:', selErr);
+        throw selErr;
+      }
 
       if (!profile) {
         const authUser = (await supabase.auth.getUser()).data.user;
@@ -145,16 +254,18 @@ export const useAuth = () => {
       }
     } catch (error) {
       console.error('syncProfileAndRole error', error);
-      // Don't clear userId/role on error - keep existing state
-      // The error will be handled by the caller
+      // Re-throw so caller can handle it
       throw error;
     }
   };
 
   const signIn = async (email: string, password: string) => {
+    // Sign in with credentials
+    // Supabase will handle clearing any existing session automatically
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
 
+    // After successful sign in, sync profile
     const authUser = (await supabase.auth.getUser()).data.user;
     if (authUser) {
       await syncProfileAndRole(authUser.id);
@@ -233,10 +344,28 @@ export const useAuth = () => {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUserId(null);
-    setRole(null);
-    setUserProfile(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error during sign out:', error);
+      // Even if signOut fails, clear local state and storage
+      try {
+        // Manually clear sessionStorage auth keys
+        const keys = Object.keys(sessionStorage);
+        keys.forEach(key => {
+          if (key.startsWith('sb-')) {
+            sessionStorage.removeItem(key);
+          }
+        });
+      } catch {
+        // Ignore storage errors
+      }
+    } finally {
+      // Always clear local state
+      setUserId(null);
+      setRole(null);
+      setUserProfile(null);
+    }
   };
 
   const updatePLZ = async (plz: string) => {
