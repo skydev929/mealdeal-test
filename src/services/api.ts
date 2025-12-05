@@ -119,6 +119,15 @@ class ApiService {
 
       if (error) throw error;
 
+      // Validate PLZ if provided
+      if (filters?.plz) {
+        const isValidPLZ = await this.validatePLZ(filters.plz);
+        if (!isValidPLZ) {
+          // PLZ is invalid - throw error to inform user
+          throw new Error('Postal code not found. Please enter a valid postal code that exists in our database.');
+        }
+      }
+
       // Calculate pricing for each dish
       const dishesWithPricing = await Promise.all(
         (data || []).map(async (dish) => {
@@ -136,7 +145,17 @@ class ApiService {
       );
 
       // Filter to show only dishes with available offers
-      let filtered = dishesWithPricing.filter((d) => d.availableOffers > 0);
+      // Requirement: "only offer available meals"
+      // - If PLZ is provided and valid: filter by offers > 0
+      // - If no PLZ: show nothing (empty list) since offers require PLZ
+      let filtered = dishesWithPricing;
+      if (filters?.plz) {
+        // PLZ is valid (we validated above), filter by offers
+        filtered = dishesWithPricing.filter((d) => d.availableOffers > 0);
+      } else {
+        // No PLZ provided - show nothing since we can't determine offers
+        filtered = [];
+      }
 
       // Filter by max price if specified
       if (filters?.maxPrice) {
@@ -466,8 +485,44 @@ class ApiService {
     }
   }
 
-  async getChains(): Promise<Chain[]> {
+  async getChains(plz?: string | null): Promise<Chain[]> {
     try {
+      // If PLZ is provided, filter chains by region
+      if (plz) {
+        // Get region_id from PLZ
+        const { data: postalData } = await supabase
+          .from('postal_codes')
+          .select('region_id')
+          .eq('plz', plz);
+
+        if (postalData && postalData.length > 0) {
+          const regionIds = postalData.map((p) => p.region_id);
+
+          // Get chain_ids from regions
+          const { data: regionsData } = await supabase
+            .from('ad_regions')
+            .select('chain_id')
+            .in('region_id', regionIds);
+
+          if (regionsData && regionsData.length > 0) {
+            const chainIds = [...new Set(regionsData.map((r) => r.chain_id))];
+
+            // Get chains that match these chain_ids
+            const { data, error } = await supabase
+              .from('chains')
+              .select('*')
+              .in('chain_id', chainIds)
+              .order('chain_name');
+
+            if (error) throw error;
+            return data || [];
+          }
+        }
+        // If PLZ doesn't match any region, return empty array
+        return [];
+      }
+
+      // If no PLZ provided, return all chains
       const { data, error } = await supabase
         .from('chains')
         .select('*')
@@ -514,8 +569,30 @@ class ApiService {
     }
   }
 
+  async validatePLZ(plz: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('postal_codes')
+        .select('plz')
+        .eq('plz', plz)
+        .limit(1);
+
+      if (error) throw error;
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('Error validating PLZ:', error);
+      return false;
+    }
+  }
+
   async updateUserPLZ(userId: string, plz: string): Promise<void> {
     try {
+      // Validate PLZ exists in database before updating
+      const isValid = await this.validatePLZ(plz);
+      if (!isValid) {
+        throw new Error('Postal code not found. Please enter a valid German postal code that exists in our database.');
+      }
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ plz, updated_at: new Date().toISOString() })

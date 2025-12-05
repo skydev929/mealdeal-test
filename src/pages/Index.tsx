@@ -31,9 +31,14 @@ export default function Index() {
   useEffect(() => {
     if (userId) {
       loadUserData();
-      loadFilterOptions();
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (userId) {
+      loadFilterOptions();
+    }
+  }, [userId, userPLZ]);
 
   useEffect(() => {
     if (userId) {
@@ -64,11 +69,19 @@ export default function Index() {
     try {
       const [categoriesData, chainsData] = await Promise.all([
         api.getCategories(),
-        api.getChains(),
+        api.getChains(userPLZ || undefined), // Pass PLZ to filter chains by region
       ]);
 
       setCategories(categoriesData);
       setChains(chainsData.map((c) => c.chain_name));
+      
+      // If selected chain is no longer available after PLZ change, reset it
+      if (selectedChain !== 'all' && chainsData.length > 0) {
+        const chainNames = chainsData.map((c) => c.chain_name);
+        if (!chainNames.includes(selectedChain)) {
+          setSelectedChain('all');
+        }
+      }
     } catch (error) {
       console.error('Error loading filter options:', error);
     }
@@ -149,6 +162,13 @@ export default function Index() {
   const handlePLZChange = async (plz: string) => {
     if (!userId) return;
 
+    // Validate PLZ exists before updating
+    const isValid = await api.validatePLZ(plz);
+    if (!isValid) {
+      // Throw error so PLZInput can catch it and not show success message
+      throw new Error('Postal code not found. Please enter a valid postal code that exists in our database.');
+    }
+
     try {
       await api.updateUserPLZ(userId, plz);
       await updatePLZ(plz); // Also update via auth hook for consistency
@@ -156,7 +176,8 @@ export default function Index() {
       // loadDishes will be triggered by useEffect
     } catch (error: any) {
       console.error('Error updating PLZ:', error);
-      toast.error(error?.message || 'Failed to update location. Please check your postal code and try again.');
+      // Error message from API will be more specific
+      throw new Error(error?.message || 'Failed to update location. Please check your postal code and try again.');
     }
   };
 
@@ -172,9 +193,33 @@ export default function Index() {
         await api.addFavorite(userId, dishId);
         toast.success('Added to favorites');
       }
-      // Reload favorites and dishes to update favorite status
+      
+      // Update favorites list
       await loadFavorites();
-      loadDishes();
+      
+      // Update favorite status in current dishes list (optimistic update)
+      setDishes((prevDishes) =>
+        prevDishes.map((dish) =>
+          dish.dish_id === dishId
+            ? { ...dish, isFavorite: !isFavorite }
+            : dish
+        )
+      );
+      
+      // Update favoriteDishIds for badge count
+      setFavoriteDishIds((prev) => {
+        if (isFavorite) {
+          return prev.filter((id) => id !== dishId);
+        } else {
+          return [...prev, dishId];
+        }
+      });
+      
+      // Optionally reload dishes in background (but don't block on errors)
+      loadDishes().catch((error) => {
+        // Silently handle errors - we've already updated the UI optimistically
+        console.error('Error reloading dishes after favorite toggle:', error);
+      });
     } catch (error: any) {
       console.error('Error toggling favorite:', error);
       toast.error(error?.message || 'Failed to update favorite. Please try again.');

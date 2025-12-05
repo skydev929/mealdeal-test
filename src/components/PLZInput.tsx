@@ -34,9 +34,12 @@ export function PLZInput({ onPLZChange, currentPLZ }: PLZInputProps) {
     setIsLoading(true);
     try {
       await onPLZChange(trimmedPLZ);
+      // Only show success if no error was thrown
       toast.success('Location updated');
-    } catch (error) {
-      toast.error('Failed to update location');
+    } catch (error: any) {
+      // Error message from API will be more specific (e.g., "Postal code not found")
+      toast.error(error?.message || 'Failed to update location. Please check your postal code.');
+      // Don't show success message if there was an error
     } finally {
       setIsLoading(false);
     }
