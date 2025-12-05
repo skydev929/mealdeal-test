@@ -2,12 +2,32 @@
 -- This ensures profiles are created even if RLS policies are strict
 
 -- Function to create user profile when auth user is created
+-- Also saves username and PLZ from user metadata if provided
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_username TEXT;
+  v_plz TEXT;
 BEGIN
-  INSERT INTO public.user_profiles (id, email)
-  VALUES (NEW.id, NEW.email)
-  ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+  -- Extract username and PLZ from metadata
+  v_username := NEW.raw_user_meta_data->>'username';
+  v_plz := NEW.raw_user_meta_data->>'plz';
+  
+  -- Check if username already exists (if provided)
+  IF v_username IS NOT NULL AND LENGTH(TRIM(v_username)) > 0 THEN
+    IF EXISTS (SELECT 1 FROM public.user_profiles WHERE username = v_username AND id != NEW.id) THEN
+      -- Username already exists, set to NULL to avoid constraint violation
+      v_username := NULL;
+    END IF;
+  END IF;
+  
+  -- Insert user profile
+  INSERT INTO public.user_profiles (id, email, username, plz)
+  VALUES (NEW.id, NEW.email, v_username, v_plz)
+  ON CONFLICT (id) DO UPDATE SET 
+    email = COALESCE(EXCLUDED.email, user_profiles.email),
+    username = COALESCE(EXCLUDED.username, user_profiles.username),
+    plz = COALESCE(EXCLUDED.plz, user_profiles.plz);
   
   -- Assign default 'user' role
   INSERT INTO public.user_roles (user_id, role)
@@ -15,6 +35,22 @@ BEGIN
   ON CONFLICT (user_id, role) DO NOTHING;
   
   RETURN NEW;
+EXCEPTION
+  WHEN unique_violation THEN
+    -- Handle unique constraint violations gracefully
+    -- If username conflict, insert without username
+    INSERT INTO public.user_profiles (id, email, plz)
+    VALUES (NEW.id, NEW.email, v_plz)
+    ON CONFLICT (id) DO UPDATE SET 
+      email = COALESCE(EXCLUDED.email, user_profiles.email),
+      plz = COALESCE(EXCLUDED.plz, user_profiles.plz);
+    
+    -- Still assign role
+    INSERT INTO public.user_roles (user_id, role)
+    VALUES (NEW.id, 'user')
+    ON CONFLICT (user_id, role) DO NOTHING;
+    
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '@/hooks/useAuth';
+import { api } from '@/services/api';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,11 +25,56 @@ export default function Login() {
     setIsLoading(true);
     try {
       if (isSignUp) {
-        await signUp(email, password, username, plz);
-        toast.success('Account created. If your account requires confirmation, please verify your email before signing in.');
-        setIsSignUp(false);
-        // after signup, don't auto-navigate; user should sign in (or confirm email)
-        return;
+        // Validate email format
+        if (!email || !email.includes('@')) {
+          toast.error('Please enter a valid email address.');
+          setIsLoading(false);
+          return;
+        }
+
+        // Check if email already exists
+        const emailExists = await api.checkEmailExists(email);
+        if (emailExists) {
+          toast.error('This email address is already registered. Please sign in instead or use a different email address.');
+          setIsLoading(false);
+          return;
+        }
+
+        // Check if username already exists (if provided)
+        if (username && username.trim()) {
+          const usernameExists = await api.checkUsernameExists(username.trim());
+          if (usernameExists) {
+            toast.error('This username is already taken. Please choose a different username.');
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        try {
+          await signUp(email, password, username.trim() || undefined, plz.trim() || undefined);
+          toast.success('Account created successfully! If your account requires confirmation, please verify your email before signing in.');
+          setIsSignUp(false);
+          // Clear form
+          setEmail('');
+          setPassword('');
+          setUsername('');
+          setPlz('');
+          // after signup, don't auto-navigate; user should sign in (or confirm email)
+          return;
+        } catch (signupError: any) {
+          // Handle signup-specific errors
+          const errorMsg = signupError.message?.toLowerCase() || '';
+          
+          // Check for username uniqueness violation (from database constraint)
+          if (errorMsg.includes('username') && (errorMsg.includes('unique') || errorMsg.includes('duplicate'))) {
+            toast.error('This username is already taken. Please choose a different username.');
+            setIsLoading(false);
+            return;
+          }
+          
+          // Re-throw to be handled by outer catch
+          throw signupError;
+        }
       }
 
       await signIn(email, password);
@@ -70,7 +116,8 @@ export default function Login() {
         navigate('/');
       }
     } catch (error: any) {
-      toast.error(error.message || 'Sign in failed');
+      // Error messages are already user-friendly from useAuth
+      toast.error(error.message || 'An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }

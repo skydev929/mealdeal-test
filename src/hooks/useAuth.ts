@@ -150,57 +150,71 @@ export const useAuth = () => {
   };
 
   const signUp = async (email: string, password: string, username?: string, plz?: string) => {
-    // Use Supabase signUp. If email confirmation is enabled, user may need to verify before a session exists.
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+    // Use Supabase signUp with metadata to pass username and PLZ
+    // The trigger will automatically create the profile with this metadata
+    const { data, error } = await supabase.auth.signUp({ 
+      email, 
+      password,
+      options: {
+        data: {
+          username: username || null,
+          plz: plz || null,
+        }
+      }
+    });
+    
+    // Handle Supabase auth errors with user-friendly messages
+    if (error) {
+      const errorMsg = error.message?.toLowerCase() || '';
+      
+      // Email already exists
+      if (errorMsg.includes('already registered') || 
+          errorMsg.includes('already exists') || 
+          errorMsg.includes('user already registered') ||
+          error.code === 'signup_disabled') {
+        throw new Error('This email address is already registered. Please sign in instead or use a different email address.');
+      }
+      
+      // Invalid email format
+      if (errorMsg.includes('invalid email') || errorMsg.includes('email format')) {
+        throw new Error('Please enter a valid email address (e.g., yourname@example.com).');
+      }
+      
+      // Password too short
+      if (errorMsg.includes('password') && (errorMsg.includes('short') || errorMsg.includes('length'))) {
+        throw new Error('Password must be at least 6 characters long. Please choose a stronger password.');
+      }
+      
+      // Weak password
+      if (errorMsg.includes('weak password') || errorMsg.includes('password is too weak')) {
+        throw new Error('Password is too weak. Please choose a stronger password with at least 6 characters.');
+      }
+      
+      // Generic error with helpful message
+      throw new Error(error.message || 'Failed to create account. Please check your information and try again.');
+    }
 
-    // If a user object is returned (auto-confirmed), create profile immediately
+    // The trigger handle_new_user() will automatically:
+    // 1. Create user_profiles row with email, username, and PLZ from metadata
+    // 2. Create user_roles row with 'user' role
+    // No need to manually create/update profile - trigger handles it all
+
+    // If a user object is returned (auto-confirmed), sync local state
     const createdUser = data?.user;
     if (createdUser) {
+      // Wait a moment for trigger to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Sync local state (profile should already exist from trigger)
       try {
-        // Try using the database function first (bypasses RLS)
-        const { error: functionError } = await supabase.rpc('create_user_profile', {
-          p_user_id: createdUser.id,
-          p_email: email,
-          p_username: username || null,
-          p_plz: plz || null,
-        });
-
-        if (functionError) {
-          // Fallback to direct insert if function doesn't exist
-          const { error: profileError } = await supabase.from('user_profiles').insert({
-            id: createdUser.id,
-            email,
-            username: username || null,
-            plz: plz || null,
-          });
-
-          if (profileError) {
-            console.error('Failed to insert user_profiles on signUp:', profileError);
-            throw profileError;
-          }
-
-          // Assign default 'user' role
-          const { error: roleError } = await supabase.from('user_roles').insert({
-            user_id: createdUser.id,
-            role: 'user',
-          });
-
-          if (roleError) {
-            console.error('Failed to assign user role on signUp:', roleError);
-            // Not fatal, role can be assigned later
-          }
-        }
-
-        // Sync local state
         await syncProfileAndRole(createdUser.id);
       } catch (err) {
-        console.error('Error creating user profile on signUp:', err);
-        throw err;
+        console.error('Error syncing profile after signUp:', err);
+        // Not fatal - trigger created profile, state will sync on next auth change
       }
     } else {
       // Email confirmation required - profile will be created when user confirms email
-      // The trigger will handle profile creation automatically
+      // The trigger will handle profile creation automatically with metadata
     }
 
     return data;

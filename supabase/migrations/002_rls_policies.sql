@@ -10,6 +10,14 @@ CREATE POLICY "Users can view own profile"
   FOR SELECT
   USING (auth.uid() = id);
 
+-- Policy: Allow checking email/username existence for signup validation
+-- This allows unauthenticated users to check if email/username exists
+CREATE POLICY "Public can check email for signup"
+  ON user_profiles
+  FOR SELECT
+  USING (true)
+  WITH CHECK (false); -- Only allow SELECT, not INSERT/UPDATE
+
 -- Policy: Users can insert their own profile (for signup)
 -- This allows authenticated users to create their profile during signup
 -- The id must match their auth.uid()

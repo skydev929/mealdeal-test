@@ -553,6 +553,46 @@ class ApiService {
   }
 
   // ============ USER PROFILE ============
+  async checkEmailExists(email: string): Promise<boolean> {
+    try {
+      // Use RPC function to check existence (bypasses RLS, more secure)
+      // Type assertion needed because function isn't in generated types yet
+      const { data, error } = await (supabase.rpc as any)('check_email_exists', {
+        p_email: email,
+      });
+
+      if (error) {
+        console.error('Error checking email:', error);
+        // If RPC doesn't exist, return false and let Supabase handle duplicate email error
+        return false;
+      }
+      return data === true;
+    } catch (error) {
+      console.error('Error checking email:', error);
+      return false;
+    }
+  }
+
+  async checkUsernameExists(username: string): Promise<boolean> {
+    try {
+      // Use RPC function to check existence (bypasses RLS, more secure)
+      // Type assertion needed because function isn't in generated types yet
+      const { data, error } = await (supabase.rpc as any)('check_username_exists', {
+        p_username: username,
+      });
+
+      if (error) {
+        console.error('Error checking username:', error);
+        // If RPC doesn't exist, return false and let database constraint handle it
+        return false;
+      }
+      return data === true;
+    } catch (error) {
+      console.error('Error checking username:', error);
+      return false;
+    }
+  }
+
   async getUserPLZ(userId: string): Promise<string | null> {
     try {
       const { data, error } = await supabase
