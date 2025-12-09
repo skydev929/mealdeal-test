@@ -384,8 +384,84 @@ export default function DishDetail() {
                             </div>
                           </div>
                           
-                          {/* Enhanced offer details */}
-                          {ing.has_offer && (
+                          {/* Enhanced offer details - show ALL available offers */}
+                          {ing.has_offer && ing.all_offers && ing.all_offers.length > 0 && (
+                            <div className="pt-2 border-t space-y-2">
+                              <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                Available Offers ({ing.all_offers.length}):
+                              </div>
+                              <div className="space-y-2">
+                                {ing.all_offers.map((offer, offerIndex) => {
+                                  const isLowestPrice = offer.is_lowest_price;
+                                  return (
+                                    <div
+                                      key={offer.offer_id}
+                                      className={`p-2.5 rounded-md border text-xs ${
+                                        isLowestPrice
+                                          ? 'bg-green-50 border-green-200'
+                                          : 'bg-muted/30 border-border'
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            {isLowestPrice && (
+                                              <Badge variant="outline" className="text-xs bg-green-600 text-white border-green-600">
+                                                Best Price
+                                              </Badge>
+                                            )}
+                                            {offer.source && (
+                                              <span className="font-medium text-foreground">
+                                                {offer.source}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {offer.valid_from && offer.valid_to && (
+                                            <div className="text-muted-foreground mt-0.5">
+                                              Valid: {new Date(offer.valid_from).toLocaleDateString()} - {new Date(offer.valid_to).toLocaleDateString()}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="text-right">
+                                          {offer.calculated_price_for_qty !== undefined && (
+                                            <div className={`font-semibold ${isLowestPrice ? 'text-green-700' : 'text-foreground'}`}>
+                                              €{offer.calculated_price_for_qty.toFixed(2)}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-3 flex-wrap text-muted-foreground">
+                                        {offer.pack_size && offer.price_total !== undefined && (
+                                          <span>
+                                            <span className="font-medium">Pack:</span> {offer.pack_size} {offer.unit_base || ing.unit} for €{offer.price_total.toFixed(2)}
+                                          </span>
+                                        )}
+                                        {offer.price_per_unit !== undefined && (
+                                          <span>
+                                            <span className="font-medium">Per {offer.unit_base || ing.unit_default || ing.unit}:</span> €{offer.price_per_unit.toFixed(2)}
+                                            {isLowestPrice && ing.price_per_unit_baseline !== undefined && 
+                                             offer.price_per_unit < ing.price_per_unit_baseline && (
+                                              <span className="line-through ml-1 text-xs">
+                                                (was €{ing.price_per_unit_baseline.toFixed(2)})
+                                              </span>
+                                            )}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {ing.all_offers.length > 1 && (
+                                <div className="text-xs text-muted-foreground italic pt-1">
+                                  Note: The lowest price offer (marked "Best Price") is used for total cost calculation.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Fallback: Show single offer details if all_offers is not available (backwards compatibility) */}
+                          {ing.has_offer && (!ing.all_offers || ing.all_offers.length === 0) && (
                             <div className="pt-2 border-t space-y-1.5 text-xs">
                               {ing.offer_source && (
                                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -442,34 +518,147 @@ export default function DishDetail() {
                   <div>
                     <h3 className="font-semibold mb-3 text-lg">Optional</h3>
                     <div className="space-y-2">
-                      {optionalIngredients.map((ing) => (
-                        <div
-                          key={ing.ingredient_id}
-                          className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover:bg-accent/50 transition-colors"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{ing.ingredient_name}</span>
-                              <Badge variant="outline" className="text-xs">Optional</Badge>
+                      {optionalIngredients.map((ing) => {
+                        const baselinePrice = calculateBaselinePrice(ing);
+                        const hasSavings = ing.current_offer_price !== undefined && 
+                                          baselinePrice !== null && 
+                                          baselinePrice > ing.current_offer_price;
+                        
+                        return (
+                          <div
+                            key={ing.ingredient_id}
+                            className="p-4 rounded-lg border bg-muted/30 hover:bg-accent/50 transition-colors space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-base">{ing.ingredient_name}</span>
+                                  <Badge variant="outline" className="text-xs">Optional</Badge>
+                                  {ing.has_offer && (
+                                    <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
+                                      On Sale
+                                    </Badge>
+                                  )}
+                                  {ing.role && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {ing.role}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-sm text-muted-foreground mt-1">
+                                  {ing.qty} {ing.unit}
+                                  {ing.unit_default && ing.unit !== ing.unit_default && (
+                                    <span className="ml-1">({ing.unit_default})</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className={`font-semibold ${ing.current_offer_price ? 'text-lg' : 'text-base text-muted-foreground'}`}>
+                                  {ing.current_offer_price !== undefined ? (
+                                    <>
+                                      <span className="text-green-600">€{ing.current_offer_price.toFixed(2)}</span>
+                                      {baselinePrice !== null && baselinePrice > ing.current_offer_price && (
+                                        <span className="text-xs text-muted-foreground line-through ml-2 block">
+                                          €{baselinePrice.toFixed(2)}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    baselinePrice !== null ? (
+                                      <span>€{baselinePrice.toFixed(2)}</span>
+                                    ) : (
+                                      <span className="text-sm">N/A</span>
+                                    )
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-sm text-muted-foreground mt-1">
-                              {ing.qty} {ing.unit}
-                              {ing.role && ` • ${ing.role}`}
-                            </div>
+                            
+                            {/* Show all offers for optional ingredients too */}
+                            {ing.has_offer && ing.all_offers && ing.all_offers.length > 0 && (
+                              <div className="pt-2 border-t space-y-2">
+                                <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                  Available Offers ({ing.all_offers.length}):
+                                </div>
+                                <div className="space-y-2">
+                                  {ing.all_offers.map((offer) => {
+                                    const isLowestPrice = offer.is_lowest_price;
+                                    return (
+                                      <div
+                                        key={offer.offer_id}
+                                        className={`p-2.5 rounded-md border text-xs ${
+                                          isLowestPrice
+                                            ? 'bg-green-50 border-green-200'
+                                            : 'bg-background border-border'
+                                        }`}
+                                      >
+                                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              {isLowestPrice && (
+                                                <Badge variant="outline" className="text-xs bg-green-600 text-white border-green-600">
+                                                  Best Price
+                                                </Badge>
+                                              )}
+                                              {offer.source && (
+                                                <span className="font-medium text-foreground">
+                                                  {offer.source}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {offer.valid_from && offer.valid_to && (
+                                              <div className="text-muted-foreground mt-0.5">
+                                                Valid: {new Date(offer.valid_from).toLocaleDateString()} - {new Date(offer.valid_to).toLocaleDateString()}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="text-right">
+                                            {offer.calculated_price_for_qty !== undefined && (
+                                              <div className={`font-semibold ${isLowestPrice ? 'text-green-700' : 'text-foreground'}`}>
+                                                €{offer.calculated_price_for_qty.toFixed(2)}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 flex-wrap text-muted-foreground">
+                                          {offer.pack_size && offer.price_total !== undefined && (
+                                            <span>
+                                              <span className="font-medium">Pack:</span> {offer.pack_size} {offer.unit_base || ing.unit} for €{offer.price_total.toFixed(2)}
+                                            </span>
+                                          )}
+                                          {offer.price_per_unit !== undefined && (
+                                            <span>
+                                              <span className="font-medium">Per {offer.unit_base || ing.unit_default || ing.unit}:</span> €{offer.price_per_unit.toFixed(2)}
+                                              {isLowestPrice && ing.price_per_unit_baseline !== undefined && 
+                                               offer.price_per_unit < ing.price_per_unit_baseline && (
+                                                <span className="line-through ml-1 text-xs">
+                                                  (was €{ing.price_per_unit_baseline.toFixed(2)})
+                                                </span>
+                                              )}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {ing.all_offers.length > 1 && (
+                                  <div className="text-xs text-muted-foreground italic pt-1">
+                                    Note: The lowest price offer (marked "Best Price") is used for total cost calculation.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Baseline price info when no offer */}
+                            {!ing.has_offer && ing.price_per_unit_baseline !== undefined && (
+                              <div className="pt-2 border-t text-xs text-muted-foreground">
+                                <span className="font-medium">Price per {ing.unit_default || ing.unit}:</span> €{ing.price_per_unit_baseline.toFixed(2)}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-right">
-                            <div className="font-medium text-muted-foreground">
-                              {(() => {
-                                const baselinePrice = calculateBaselinePrice(ing);
-                                if (baselinePrice !== null) {
-                                  return <span>€{baselinePrice.toFixed(2)}</span>;
-                                }
-                                return <span className="text-sm">N/A</span>;
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </>

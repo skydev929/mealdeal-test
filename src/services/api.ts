@@ -78,6 +78,20 @@ export interface DishPricing {
   available_offers_count: number;
 }
 
+export interface IngredientOffer {
+  offer_id: number;
+  price_total: number;
+  pack_size: number;
+  unit_base: string;
+  source?: string;
+  valid_from?: string;
+  valid_to?: string;
+  source_ref_id?: string;
+  price_per_unit?: number; // Calculated: price_total / pack_size
+  calculated_price_for_qty?: number; // Calculated price for the required qty in this dish
+  is_lowest_price: boolean; // Whether this is the lowest price offer (used in calculation)
+}
+
 export interface DishIngredient {
   dish_id: string;
   ingredient_id: string;
@@ -88,16 +102,17 @@ export interface DishIngredient {
   optional: boolean;
   role?: string;
   price_baseline_per_unit?: number;
-  current_offer_price?: number;
+  current_offer_price?: number; // Price from lowest offer (for calculation)
   has_offer: boolean;
-  // Enhanced offer details
-  offer_source?: string;
-  offer_valid_from?: string;
-  offer_valid_to?: string;
-  offer_pack_size?: number;
-  offer_unit_base?: string;
-  offer_price_total?: number;
-  price_per_unit_offer?: number; // Calculated price per unit from offer
+  // Enhanced offer details - now includes ALL offers
+  all_offers?: IngredientOffer[]; // All available offers for this ingredient
+  offer_source?: string; // Deprecated - use all_offers[0] if needed (backwards compat)
+  offer_valid_from?: string; // Deprecated - use all_offers[0] if needed
+  offer_valid_to?: string; // Deprecated - use all_offers[0] if needed
+  offer_pack_size?: number; // Deprecated - use all_offers[0] if needed
+  offer_unit_base?: string; // Deprecated - use all_offers[0] if needed
+  offer_price_total?: number; // Deprecated - use all_offers[0] if needed
+  price_per_unit_offer?: number; // Deprecated - use all_offers (lowest price one)
   price_per_unit_baseline?: number; // Baseline price per unit
 }
 
@@ -307,14 +322,14 @@ class ApiService {
 
       const today = new Date().toISOString().split('T')[0];
 
-      // Get current offers for these ingredients if region available
-      // Select the LOWEST price offer per ingredient when multiple offers exist
-      let offers: any[] = [];
+      // Get ALL current offers for these ingredients if region available
+      // We'll group them by ingredient_id and identify the lowest price one
+      const allOffersByIngredient = new Map<string, any[]>();
       
       if (regionIds.length > 0 && ingredientIds.length > 0) {
         const { data: offersData } = await supabase
           .from('offers')
-          .select('ingredient_id, price_total, pack_size, unit_base, source, valid_from, valid_to, offer_id')
+          .select('ingredient_id, price_total, pack_size, unit_base, source, valid_from, valid_to, offer_id, source_ref_id')
           .in('ingredient_id', ingredientIds)
           .in('region_id', regionIds)
           .lte('valid_from', today)
@@ -322,48 +337,82 @@ class ApiService {
           .order('price_total', { ascending: true }); // Order by price ascending
 
         if (offersData) {
-          // Group by ingredient_id and keep only the lowest price offer for each
-          const offersByIngredient = new Map<string, any>();
+          // Group ALL offers by ingredient_id
           for (const offer of offersData) {
-            const existing = offersByIngredient.get(offer.ingredient_id);
-            if (!existing || offer.price_total < existing.price_total) {
-              offersByIngredient.set(offer.ingredient_id, offer);
+            if (!allOffersByIngredient.has(offer.ingredient_id)) {
+              allOffersByIngredient.set(offer.ingredient_id, []);
             }
+            allOffersByIngredient.get(offer.ingredient_id)!.push(offer);
           }
-          offers = Array.from(offersByIngredient.values());
         }
       }
 
-      // Map offers by ingredient_id (now contains only lowest price offer per ingredient)
-      const offersMap = new Map(
-        offers.map((o) => [o.ingredient_id, o])
-      );
+      // Find the lowest price offer for each ingredient (for calculation)
+      const lowestPriceOfferMap = new Map<string, any>();
+      for (const [ingredientId, offers] of allOffersByIngredient.entries()) {
+        if (offers.length > 0) {
+          // Offers are already sorted by price_total ascending, so first one is lowest
+          lowestPriceOfferMap.set(ingredientId, offers[0]);
+        }
+      }
 
       // Transform to DishIngredient format
       return dishIngredients.map((di: any) => {
         const ingredient = ingredientsMap.get(di.ingredient_id);
-        const offer = offersMap.get(di.ingredient_id);
+        const allOffers = allOffersByIngredient.get(di.ingredient_id) || [];
+        const lowestPriceOffer = lowestPriceOfferMap.get(di.ingredient_id);
         
-        // Calculate offer price if available
+        // Calculate offer price using the LOWEST price offer (for calculation)
         let currentOfferPrice: number | undefined;
-        if (offer) {
+        if (lowestPriceOffer) {
           // Convert qty to offer unit, then calculate price
+          const qtyInOfferUnit = this.convertUnitForPricing(
+            di.qty,
+            di.unit,
+            lowestPriceOffer.unit_base
+          );
+          if (qtyInOfferUnit !== null && lowestPriceOffer.pack_size > 0) {
+            currentOfferPrice = (qtyInOfferUnit / lowestPriceOffer.pack_size) * lowestPriceOffer.price_total;
+          }
+        }
+
+        // Process ALL offers with calculated prices and mark the lowest one
+        const processedOffers: IngredientOffer[] = allOffers.map((offer: any, index: number) => {
+          // Calculate price per unit
+          const pricePerUnit = offer.pack_size > 0 ? offer.price_total / offer.pack_size : 0;
+          
+          // Calculate price for the required qty in this dish
+          let calculatedPriceForQty: number | undefined;
           const qtyInOfferUnit = this.convertUnitForPricing(
             di.qty,
             di.unit,
             offer.unit_base
           );
           if (qtyInOfferUnit !== null && offer.pack_size > 0) {
-            currentOfferPrice = (qtyInOfferUnit / offer.pack_size) * offer.price_total;
+            calculatedPriceForQty = (qtyInOfferUnit / offer.pack_size) * offer.price_total;
           }
-        }
 
-        // Calculate price per unit for comparison
+          return {
+            offer_id: offer.offer_id,
+            price_total: offer.price_total,
+            pack_size: offer.pack_size,
+            unit_base: offer.unit_base,
+            source: offer.source,
+            valid_from: offer.valid_from,
+            valid_to: offer.valid_to,
+            source_ref_id: offer.source_ref_id,
+            price_per_unit: pricePerUnit,
+            calculated_price_for_qty: calculatedPriceForQty,
+            is_lowest_price: index === 0, // First offer (lowest price) is used in calculation
+          };
+        });
+
+        // Calculate price per unit for comparison (from lowest offer)
         let pricePerUnitOffer: number | undefined;
         let pricePerUnitBaseline: number | undefined;
         
-        if (offer && offer.pack_size > 0) {
-          pricePerUnitOffer = offer.price_total / offer.pack_size;
+        if (lowestPriceOffer && lowestPriceOffer.pack_size > 0) {
+          pricePerUnitOffer = lowestPriceOffer.price_total / lowestPriceOffer.pack_size;
         }
         
         if (ingredient && ingredient.price_baseline_per_unit) {
@@ -380,15 +429,17 @@ class ApiService {
           optional: di.optional || false,
           role: di.role || undefined,
           price_baseline_per_unit: ingredient ? ingredient.price_baseline_per_unit : undefined,
-          current_offer_price: currentOfferPrice,
-          has_offer: !!offer,
-          // Enhanced offer details
-          offer_source: offer?.source,
-          offer_valid_from: offer?.valid_from,
-          offer_valid_to: offer?.valid_to,
-          offer_pack_size: offer?.pack_size,
-          offer_unit_base: offer?.unit_base,
-          offer_price_total: offer?.price_total,
+          current_offer_price: currentOfferPrice, // Price from lowest offer
+          has_offer: allOffers.length > 0,
+          // ALL offers for this ingredient
+          all_offers: processedOffers,
+          // Deprecated fields (kept for backwards compatibility)
+          offer_source: lowestPriceOffer?.source,
+          offer_valid_from: lowestPriceOffer?.valid_from,
+          offer_valid_to: lowestPriceOffer?.valid_to,
+          offer_pack_size: lowestPriceOffer?.pack_size,
+          offer_unit_base: lowestPriceOffer?.unit_base,
+          offer_price_total: lowestPriceOffer?.price_total,
           price_per_unit_offer: pricePerUnitOffer,
           price_per_unit_baseline: pricePerUnitBaseline,
         };
