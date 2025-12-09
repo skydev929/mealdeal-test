@@ -82,6 +82,52 @@ function parseCSV(content: string): string[][] {
   return lines.filter(line => line.length > 0);
 }
 
+// Get expected columns for each table type (excluding auto-generated columns)
+function getExpectedColumns(tableType: string): string[] {
+  const expectedColumns: Record<string, string[]> = {
+    'ad_regions': ['region_id', 'chain_id', 'label'],
+    'chains': ['chain_id', 'chain_name'],
+    'dish_ingredients': ['dish_id', 'ingredient_id', 'qty', 'unit', 'optional', 'role'],
+    'dishes': ['dish_id', 'name', 'category', 'is_quick', 'is_meal_prep', 'season', 'cuisine', 'notes'],
+    'ingredients': ['ingredient_id', 'name_canonical', 'unit_default', 'price_baseline_per_unit', 'allergen_tags', 'notes'],
+    'offers': ['region_id', 'ingredient_id', 'price_total', 'pack_size', 'unit_base', 'valid_from', 'valid_to', 'source', 'source_ref_id'],
+    'postal_codes': ['plz', 'region_id', 'city'],
+    'store_region_map': ['store_id', 'region_id'],
+    'stores': ['store_id', 'chain_id', 'store_name', 'plz', 'city', 'street', 'lat', 'lon'],
+    'lookups_categories': ['category'],
+    'lookups_units': ['unit', 'description'],
+  };
+  
+  return expectedColumns[tableType] || [];
+}
+
+// Get required fields for each table type
+function getRequiredFields(tableType: string): Set<string> {
+  const requiredFields: Record<string, string[]> = {
+    'ad_regions': ['region_id', 'chain_id', 'label'],
+    'chains': ['chain_id', 'chain_name'],
+    'dish_ingredients': ['dish_id', 'ingredient_id', 'qty', 'unit', 'optional', 'role'],
+    'dishes': ['dish_id', 'name', 'category', 'is_quick', 'is_meal_prep'],
+    'ingredients': ['ingredient_id', 'name_canonical', 'unit_default', 'price_baseline_per_unit'],
+    'offers': ['region_id', 'ingredient_id', 'price_total', 'unit_base', 'source'],
+    'postal_codes': ['plz', 'region_id', 'city'],
+    'store_region_map': ['store_id', 'region_id'],
+    'stores': ['store_id', 'chain_id', 'store_name', 'plz', 'city', 'street'],
+  };
+  
+  return new Set(requiredFields[tableType] || []);
+}
+
+// Check if a value is empty (null, empty string, whitespace, or 'NULL'/'null' strings)
+function isEmptyValue(value: string): boolean {
+  if (!value) return true;
+  const trimmed = value.trim();
+  return trimmed === '' || 
+         trimmed === 'NULL' || 
+         trimmed === 'null' ||
+         trimmed.length === 0;
+}
+
 // Validate and transform row based on table type
 function validateRow(
   headers: string[],
@@ -112,9 +158,26 @@ function validateRow(
       continue;
     }
 
+    // Get required fields for this table type
+    const requiredFields = getRequiredFields(tableType);
+    
+    // Check for required fields BEFORE skipping empty values
+    // This ensures we validate required fields even if they're empty
+    if (requiredFields.has(header)) {
+      // This is a required field - validate it's not empty
+      if (isEmptyValue(value)) {
+        return { 
+          valid: false, 
+          error: `Invalid ${header}: ${header} cannot be empty or null. ${header} is a required field.` 
+        };
+      }
+    }
+
     // Skip empty values for optional fields (but not for offers pack_size which has special handling)
-    if ((value === '' || value === 'NULL' || value === 'null') && 
-        !(tableType === 'offers' && header === 'pack_size')) {
+    // Also don't skip if it's a required field (already validated above)
+    if (isEmptyValue(value) && 
+        !(tableType === 'offers' && header === 'pack_size') &&
+        !requiredFields.has(header)) {
       rowData[header] = null;
       continue;
     }
@@ -129,10 +192,7 @@ function validateRow(
         }
         if (header === 'region_id') {
           // region_id is now TEXT, so just use the value as-is
-          // Validate it's not empty
-          if (!value || value.trim() === '') {
-            return { valid: false, error: `Invalid region_id "${value}": region_id cannot be empty. Make sure the region exists in ad_regions table.` };
-          }
+          // Empty check already done in required fields validation above
           rowData[header] = value;
         } else if (header === 'ingredient_id') {
           // Convert numeric ID to text ID format (e.g., 1 -> I001, 2 -> I002)
@@ -219,16 +279,26 @@ function validateRow(
 
       case 'ingredients':
         if (header === 'price_baseline_per_unit') {
+          // price_baseline_per_unit is required, so validate it's a valid number
           const num = parseFloat(value.replace(',', '.'));
-          if (value && !isNaN(num) && num < 0) {
+          if (isNaN(num)) {
+            return { valid: false, error: `Invalid price_baseline_per_unit: "${value}". Must be a valid number (e.g., 1.99 or 1,99).` };
+          }
+          if (num < 0) {
             return { valid: false, error: `Invalid price_baseline_per_unit: "${value}". Price cannot be negative.` };
           }
-          rowData[header] = isNaN(num) ? null : num;
+          rowData[header] = num;
         } else if (header === 'allergen_tags') {
           rowData[header] = value ? value.split(',').map(t => t.trim()) : null;
         } else {
           rowData[header] = value;
         }
+        break;
+
+      case 'ad_regions':
+        // Required fields (label, region_id, chain_id) are already validated earlier
+        // Just assign the value here
+        rowData[header] = value;
         break;
 
       default:
@@ -283,6 +353,63 @@ serve(async (req) => {
     const headers = lines[0].map(h => h.trim());
     const dataRows = lines.slice(1);
 
+    // Validate CSV headers match expected columns for this table type
+    const expectedColumns = getExpectedColumns(tableType);
+    
+    if (expectedColumns.length > 0) {
+      // For offers table, offer_id might be in CSV but we'll ignore it
+      const headersToCheck = tableType === 'offers' && headers.includes('offer_id')
+        ? headers.filter(h => h !== 'offer_id')
+        : headers;
+      
+      const expectedColumnsSet = new Set(expectedColumns);
+      const headersSet = new Set(headersToCheck);
+      
+      // Check for unexpected columns (columns in CSV that aren't expected)
+      const unexpectedColumns = headersToCheck.filter(h => !expectedColumnsSet.has(h));
+      
+      // Check for missing required columns (columns expected but not in CSV)
+      const requiredFields = getRequiredFields(tableType);
+      const missingRequiredColumns = Array.from(requiredFields).filter(col => !headersSet.has(col));
+      
+      if (unexpectedColumns.length > 0) {
+        return new Response(
+          JSON.stringify({
+            validRows: 0,
+            errors: [
+              `CSV column validation failed: The CSV contains columns that are not expected for the "${tableType}" table.`,
+              `Unexpected columns found: ${unexpectedColumns.join(', ')}`,
+              `Expected columns for "${tableType}" table: ${expectedColumns.join(', ')}`,
+              `Your CSV columns: ${headers.join(', ')}`,
+              ``,
+              `Please check:`,
+              `1. Make sure you selected the correct table type`,
+              `2. Remove or rename unexpected columns`,
+              `3. Verify column names match exactly (case-sensitive)`,
+            ],
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (missingRequiredColumns.length > 0) {
+        return new Response(
+          JSON.stringify({
+            validRows: 0,
+            errors: [
+              `CSV column validation failed: Required columns are missing for the "${tableType}" table.`,
+              `Missing required columns: ${missingRequiredColumns.join(', ')}`,
+              `Expected columns for "${tableType}" table: ${expectedColumns.join(', ')}`,
+              `Your CSV columns: ${headers.join(', ')}`,
+              ``,
+              `Please add the missing required columns to your CSV file.`,
+            ],
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     const result: CSVImportResult = {
       validRows: 0,
       errors: [],
@@ -293,13 +420,31 @@ serve(async (req) => {
     // Validate all rows
     for (let i = 0; i < dataRows.length; i++) {
       const row = dataRows[i];
+      
+      // Log row for debugging (especially for ad_regions)
+      if (tableType === 'ad_regions') {
+        console.log(`Validating ad_regions row ${i + 2}:`, row);
+      }
+      
       const validation = validateRow(headers, row, tableType);
 
       if (!validation.valid) {
-        // Add row number and more context to error
+        // Add row number, error message, and row data for context
         const rowNum = i + 2; // +2 because row 1 is header, and arrays are 0-indexed
         const errorMsg = validation.error || 'Unknown validation error';
-        result.errors.push(`Row ${rowNum}: ${errorMsg}`);
+        
+        // Create a table-like row data display for the error message
+        const rowDataTable = headers.map((h, idx) => {
+          const val = (row[idx] || '').trim() || '(empty)';
+          return `  ${h}: "${val}"`;
+        }).join('\n');
+        
+        // Include row data in error message for better debugging
+        // Format: Error message, then row data in a readable format
+        result.errors.push(
+          `Row ${rowNum}: ${errorMsg}\n` +
+          `Row Data:\n${rowDataTable}`
+        );
         continue;
       }
 
@@ -404,12 +549,10 @@ serve(async (req) => {
             valid_from: row.valid_from,
             valid_to: row.valid_to,
             offer_hash: row.offer_hash,
+            source: row.source, // source is required
           };
           
           // Add optional fields only if they exist
-          if (row.source !== null && row.source !== undefined) {
-            insertData.source = row.source;
-          }
           if (row.source_ref_id !== null && row.source_ref_id !== undefined) {
             insertData.source_ref_id = row.source_ref_id;
           }

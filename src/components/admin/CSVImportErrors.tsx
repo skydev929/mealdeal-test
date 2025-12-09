@@ -23,6 +23,21 @@ function getUserFriendlyError(error: string): {
 } {
   const lowerError = error.toLowerCase();
 
+  // Label validation errors for ad_regions
+  if (lowerError.includes('invalid label') || lowerError.includes('label cannot be empty')) {
+    return {
+      title: 'Empty Label Field',
+      description: 'The label column in your ad_regions CSV contains an empty or null value. Label is a required field.',
+      fix: [
+        '1. Check your CSV file for rows with empty label values',
+        '2. Ensure every row has a value in the label column',
+        '3. Label should be a descriptive name for the region (e.g., "REWE_NORD", "LIDL_BERLIN")',
+        '4. Remove or fill in any empty label cells before importing',
+      ],
+      severity: 'error',
+    };
+  }
+
   // Foreign key constraint errors
   if (lowerError.includes('foreign key') || lowerError.includes('violates foreign key')) {
     if (lowerError.includes('unit_default') || lowerError.includes('lookups_units')) {
