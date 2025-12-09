@@ -60,12 +60,12 @@ export function DishFilters({
             <SelectValue placeholder="All supermarkets" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All supermarkets</SelectItem>
-            {chains.map((chain) => (
+            <SelectItem value="all">REWE</SelectItem>
+            {/* {chains.map((chain) => (
               <SelectItem key={chain} value={chain}>
                 {chain}
               </SelectItem>
-            ))}
+            ))} */}
           </SelectContent>
         </Select>
       </div>
