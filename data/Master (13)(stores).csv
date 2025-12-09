@@ -1,0 +1,13 @@
+﻿store_id,chain_id,store_name,plz,city,street,lat,lon
+S01001,C01,REWE Sarstedt ,31157,Sarstedt,Moorberg,,
+S01002,C01,REWE Sarstedt ,31157,Sarstedt,Vossstr,,
+S02001,C02,Lidl Sarstedt ,31157,Sarstedt,Vossstr,,
+S03001,C03,ALDI NORD Sarstedt,31157,Sarstedt,Moorberg,,
+S05001,C05,Kaufland Laatzen ,30880,Laatzen,Münchenerstr,,
+S06001,C06,EDEKA Rusch,31180,Giesen,Rathausstr,,
+S07001,C07,EDEKA Center Hippauf,30519,Hannover,Hildesheimerstr,,
+S08001,C08,nahkauf Laatzen,30880,Laatzen,Am Kamp,,
+S09001,C09,Nah und Gut Hoppmann,31139,Hildesheim,Sorsumer Hauptstr,,
+S10001,C10,Penny Sarstedt,31157,Sarstedt,Hildesheimerstr,,
+S11001,C11,Netto Marken-Discount Sarstedt,31157,Sarstedt,Hildesheimerstr,,
+S12001,C12,NP-Markt Sarstedt,31157,Sarstedt,Friedrich-Ebert-Str.,,

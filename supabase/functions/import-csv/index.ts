@@ -17,14 +17,15 @@ interface CSVImportResult {
 
 // Generate hash for offer deduplication
 function generateOfferHash(row: Record<string, any>): string {
+  // Handle null/undefined values by converting to empty string
   const hashData = [
-    row.region_id,
-    row.ingredient_id,
-    row.price_total,
-    row.pack_size,
-    row.valid_from,
-    row.valid_to,
-    row.source_ref_id,
+    row.region_id || '',
+    row.ingredient_id || '',
+    row.price_total || '',
+    row.pack_size || '',
+    row.valid_from || '',
+    row.valid_to || '',
+    row.source_ref_id || '',
   ].join('|');
   
   // Simple hash function
@@ -87,20 +88,33 @@ function validateRow(
   row: string[],
   tableType: string
 ): { valid: boolean; data?: Record<string, any>; error?: string } {
-  if (row.length !== headers.length) {
+  // For offers table, offer_id might be in CSV but we'll ignore it
+  // So allow one extra column if it's offer_id
+  const expectedColumns = tableType === 'offers' && headers.includes('offer_id') 
+    ? headers.length - 1 
+    : headers.length;
+  
+  if (row.length < expectedColumns || row.length > headers.length) {
     return { 
       valid: false, 
-      error: `Wrong number of columns: found ${row.length}, expected ${headers.length}. Check for extra commas or missing values.` 
+      error: `Wrong number of columns: found ${row.length}, expected ${expectedColumns}-${headers.length}. Check for extra commas or missing values.` 
     };
   }
 
   const rowData: Record<string, any> = {};
   for (let i = 0; i < headers.length; i++) {
-    const value = row[i].trim();
+    // Handle case where row might be shorter than headers (missing optional columns)
+    const value = (row[i] || '').trim();
     const header = headers[i].trim();
 
-    // Skip empty values for optional fields
-    if (value === '' || value === 'NULL' || value === 'null') {
+    // Skip offer_id column - it's auto-generated
+    if (tableType === 'offers' && header === 'offer_id') {
+      continue;
+    }
+
+    // Skip empty values for optional fields (but not for offers pack_size which has special handling)
+    if ((value === '' || value === 'NULL' || value === 'null') && 
+        !(tableType === 'offers' && header === 'pack_size')) {
       rowData[header] = null;
       continue;
     }
@@ -108,13 +122,18 @@ function validateRow(
     // Type conversions based on table schema
     switch (tableType) {
       case 'offers':
+        // Skip offer_id - it's auto-generated (SERIAL)
+        if (header === 'offer_id') {
+          // Ignore this column - offer_id is auto-generated
+          continue;
+        }
         if (header === 'region_id') {
-          // Convert to integer
-          const num = parseInt(value, 10);
-          if (isNaN(num)) {
-            return { valid: false, error: `Invalid region_id "${value}": must be a number (e.g., 500, 501). Make sure the region exists in ad_regions table.` };
+          // region_id is now TEXT, so just use the value as-is
+          // Validate it's not empty
+          if (!value || value.trim() === '') {
+            return { valid: false, error: `Invalid region_id "${value}": region_id cannot be empty. Make sure the region exists in ad_regions table.` };
           }
-          rowData[header] = num;
+          rowData[header] = value;
         } else if (header === 'ingredient_id') {
           // Convert numeric ID to text ID format (e.g., 1 -> I001, 2 -> I002)
           // If it's already in text format, keep it
@@ -126,7 +145,8 @@ function validateRow(
             // Already in text format
             rowData[header] = value;
           }
-        } else if (header === 'price_total' || header === 'pack_size') {
+        } else if (header === 'price_total') {
+          // price_total is required
           const num = parseFloat(value.replace(',', '.'));
           if (isNaN(num)) {
             return { valid: false, error: `Invalid number for ${header}: "${value}". Use numbers only (e.g., 1.99 or 1,99).` };
@@ -135,6 +155,26 @@ function validateRow(
             return { valid: false, error: `Invalid ${header}: "${value}". Numbers cannot be negative.` };
           }
           rowData[header] = num;
+        } else if (header === 'pack_size') {
+          // pack_size is required but can be empty in CSV - set to 1.0 as default
+          if (value === '' || value === 'NULL' || value === 'null') {
+            // Default to 1.0 if empty (assumes 1 unit)
+            rowData[header] = 1.0;
+          } else {
+            const num = parseFloat(value.replace(',', '.'));
+            if (isNaN(num)) {
+              return { valid: false, error: `Invalid number for ${header}: "${value}". Use numbers only (e.g., 1.99 or 1,99), or leave empty.` };
+            }
+            if (num < 0) {
+              return { valid: false, error: `Invalid ${header}: "${value}". Numbers cannot be negative.` };
+            }
+            if (num === 0) {
+              // If 0, default to 1.0
+              rowData[header] = 1.0;
+            } else {
+              rowData[header] = num;
+            }
+          }
         } else if (header === 'valid_from' || header === 'valid_to') {
           // Validate date format (YYYY-MM-DD)
           const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -265,7 +305,14 @@ serve(async (req) => {
 
       // Add offer hash for offers table
       if (tableType === 'offers' && validation.data) {
-        validation.data.offer_hash = generateOfferHash(validation.data);
+        try {
+          validation.data.offer_hash = generateOfferHash(validation.data);
+        } catch (hashError: any) {
+          const rowNum = i + 2;
+          console.error('Error generating offer hash for row:', rowNum, hashError, validation.data);
+          result.errors.push(`Row ${rowNum}: Failed to generate offer hash - ${hashError.message || 'Unknown error'}`);
+          continue;
+        }
       }
 
       validRows.push(validation.data!);
@@ -290,23 +337,177 @@ serve(async (req) => {
       // Handle different conflict resolution based on table type
       if (tableType === 'offers') {
         // Offers table has offer_hash for deduplication
-        // Insert in batches to avoid issues
+        // Insert one by one to get better error messages
         for (const row of validRows) {
-          const { error, data } = await supabaseClient
+          console.log(`Attempting to insert offer row:`, JSON.stringify(row));
+          
+          // Verify foreign key references before inserting
+          // Check region_id exists
+          const { data: regionCheck, error: regionError } = await supabaseClient
+            .from('ad_regions')
+            .select('region_id')
+            .eq('region_id', row.region_id)
+            .single();
+          
+          if (regionError || !regionCheck) {
+            const rowIndex = validRows.indexOf(row) + 2;
+            const errorMsg = `Region ID "${row.region_id}" not found in ad_regions table. Make sure you've imported ad_regions first.`;
+            console.error(`Region validation failed for row:`, row, regionError);
+            result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
+            if (!insertError) insertError = regionError || new Error(errorMsg);
+            continue;
+          }
+          
+          // Check ingredient_id exists
+          const { data: ingredientCheck, error: ingredientError } = await supabaseClient
+            .from('ingredients')
+            .select('ingredient_id')
+            .eq('ingredient_id', row.ingredient_id)
+            .single();
+          
+          if (ingredientError || !ingredientCheck) {
+            const rowIndex = validRows.indexOf(row) + 2;
+            const errorMsg = `Ingredient ID "${row.ingredient_id}" not found in ingredients table. Make sure you've imported ingredients first.`;
+            console.error(`Ingredient validation failed for row:`, row, ingredientError);
+            result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
+            if (!insertError) insertError = ingredientError || new Error(errorMsg);
+            continue;
+          }
+          
+          // Check unit_base exists in lookups_units
+          if (row.unit_base) {
+            const { data: unitCheck, error: unitError } = await supabaseClient
+              .from('lookups_units')
+              .select('unit')
+              .eq('unit', row.unit_base)
+              .single();
+            
+            if (unitError || !unitCheck) {
+              const rowIndex = validRows.indexOf(row) + 2;
+              const errorMsg = `Unit "${row.unit_base}" not found in lookups_units table. Make sure you've imported units lookup first.`;
+              console.error(`Unit validation failed for row:`, row, unitError);
+              result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
+              if (!insertError) insertError = unitError || new Error(errorMsg);
+              continue;
+            }
+          }
+          
+          // For offers, we need to handle SERIAL offer_id properly
+          // upsert doesn't work well with SERIAL columns, so we check first and then insert/update
+          // Explicitly create insert/update object with only the fields we want (exclude offer_id, created_at, updated_at)
+          const insertData: Record<string, any> = {
+            region_id: row.region_id,
+            ingredient_id: row.ingredient_id,
+            price_total: row.price_total,
+            pack_size: row.pack_size,
+            unit_base: row.unit_base,
+            valid_from: row.valid_from,
+            valid_to: row.valid_to,
+            offer_hash: row.offer_hash,
+          };
+          
+          // Add optional fields only if they exist
+          if (row.source !== null && row.source !== undefined) {
+            insertData.source = row.source;
+          }
+          if (row.source_ref_id !== null && row.source_ref_id !== undefined) {
+            insertData.source_ref_id = row.source_ref_id;
+          }
+          
+          // Check if offer_hash already exists
+          const { data: existingOffer, error: checkError } = await supabaseClient
             .from(tableType)
-            .upsert(row, { 
-              onConflict: 'offer_hash', 
-              ignoreDuplicates: false 
-            })
-            .select();
+            .select('offer_id')
+            .eq('offer_hash', row.offer_hash)
+            .maybeSingle();
+          
+          if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" which is OK
+            console.error(`Error checking for existing offer:`, checkError);
+            // Continue anyway - try to insert
+          }
+          
+          let error, data;
+          if (existingOffer && existingOffer.offer_id) {
+            // Update existing offer
+            const { error: updateError, data: updateDataResult } = await supabaseClient
+              .from(tableType)
+              .update(insertData)
+              .eq('offer_hash', row.offer_hash)
+              .select();
+            error = updateError;
+            data = updateDataResult;
+          } else {
+            // Insert new offer (SERIAL will auto-generate offer_id, timestamps will auto-generate)
+            // Make absolutely sure offer_id, created_at, updated_at are not in the insert data
+            const finalInsertData = { ...insertData };
+            delete (finalInsertData as any).offer_id;
+            delete (finalInsertData as any).created_at;
+            delete (finalInsertData as any).updated_at;
+            
+            // Verify the object doesn't have these keys
+            if ('offer_id' in finalInsertData || 'created_at' in finalInsertData || 'updated_at' in finalInsertData) {
+              console.error('ERROR: offer_id, created_at, or updated_at found in insertData!', finalInsertData);
+            }
+            
+            console.log(`Inserting new offer with data:`, JSON.stringify(finalInsertData));
+            console.log(`Keys in insertData:`, Object.keys(finalInsertData));
+            
+            const { error: insertError, data: insertDataResult } = await supabaseClient
+              .from(tableType)
+              .insert(finalInsertData)
+              .select();
+            
+            error = insertError;
+            data = insertDataResult;
+            
+            if (error) {
+              console.error(`Insert error details:`, JSON.stringify(error, null, 2));
+              console.error(`Insert data that failed:`, JSON.stringify(finalInsertData, null, 2));
+              console.error(`All keys in failed data:`, Object.keys(finalInsertData));
+            }
+          }
           if (error) {
             console.error(`Error inserting offer row:`, row, error);
+            console.error(`Error code:`, (error as any).code);
+            console.error(`Error message:`, error.message);
+            console.error(`Error details:`, (error as any).details);
+            console.error(`Error hint:`, (error as any).hint);
             const rowIndex = validRows.indexOf(row) + 2; // +2 for header and 0-index
-            result.errors.push(`Row ${rowIndex}: Failed to import offer - ${error.message || 'Unknown error'}`);
+            const errorAny = error as any;
+            let errorMsg = error.message || 'Unknown error';
+            
+            // Enhance error message with context
+            if (error.message?.includes('foreign key') || errorAny.code === '23503') {
+              if (error.message.includes('region_id') || errorAny.details?.includes('region_id')) {
+                errorMsg = `Region ID "${row.region_id}" not found. Import ad_regions first.`;
+              } else if (error.message.includes('ingredient_id') || errorAny.details?.includes('ingredient_id')) {
+                errorMsg = `Ingredient ID "${row.ingredient_id}" not found. Import ingredients first.`;
+              } else if (error.message.includes('unit_base') || errorAny.details?.includes('unit_base')) {
+                errorMsg = `Unit "${row.unit_base}" not found. Import units lookup first.`;
+              } else {
+                errorMsg = `Foreign key constraint violation: ${error.message}`;
+              }
+            } else if (error.message?.includes('duplicate') || error.message?.includes('unique constraint') || errorAny.code === '23505') {
+              errorMsg = `Offer with this hash already exists. The row will be updated.`;
+              // This is OK for upsert, so we can continue
+              if (data && data.length > 0) {
+                insertedCount++;
+                continue;
+              }
+            } else {
+              errorMsg = `Database error: ${error.message || 'Unknown error'}`;
+              if (errorAny.details) errorMsg += ` (${errorAny.details})`;
+              if (errorAny.hint) errorMsg += ` Hint: ${errorAny.hint}`;
+            }
+            
+            result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
             if (!insertError) insertError = error;
             continue; // Continue with next row instead of breaking
           }
-          if (data && data.length > 0) insertedCount++;
+          if (data && data.length > 0) {
+            console.log(`Successfully inserted/updated offer row:`, data[0]);
+            insertedCount++;
+          }
         }
       } else if (tableType === 'lookups_categories' || tableType === 'lookups_units') {
         // Lookup tables use the first column as primary key
@@ -355,15 +556,73 @@ serve(async (req) => {
         if (data) insertedCount = data.length;
       } else if (tableType === 'ad_regions') {
         // Ad regions uses region_id as primary key
-        const { error, data } = await supabaseClient
-          .from(tableType)
-          .upsert(validRows, { 
-            onConflict: 'region_id',
-            ignoreDuplicates: false 
-          })
-          .select();
-        insertError = error;
-        if (data) insertedCount = data.length;
+        // Insert one by one to handle duplicates better and get better error messages
+        for (const row of validRows) {
+          console.log(`Attempting to insert ad_regions row:`, JSON.stringify(row));
+          
+          // First, verify the chain_id exists
+          const { data: chainCheck, error: chainError } = await supabaseClient
+            .from('chains')
+            .select('chain_id')
+            .eq('chain_id', row.chain_id)
+            .single();
+          
+          if (chainError || !chainCheck) {
+            const rowIndex = validRows.indexOf(row) + 2;
+            const errorMsg = `Chain ID "${row.chain_id}" not found in chains table. Make sure you've imported chains first.`;
+            console.error(`Chain validation failed for row:`, row, chainError);
+            result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
+            if (!insertError) insertError = chainError || new Error(errorMsg);
+            continue;
+          }
+          
+          const { error, data } = await supabaseClient
+            .from(tableType)
+            .upsert(row, { 
+              onConflict: 'region_id',
+              ignoreDuplicates: false 
+            })
+            .select();
+          if (error) {
+            console.error(`Error inserting ad_regions row:`, row, error);
+            console.error(`Error code:`, error.code);
+            console.error(`Error message:`, error.message);
+            console.error(`Error details:`, error.details);
+            console.error(`Error hint:`, error.hint);
+            const rowIndex = validRows.indexOf(row) + 2; // +2 for header and 0-index
+            let errorMsg = error.message || 'Unknown error';
+            
+            // Enhance error message with context
+            const errorAny = error as any;
+            if (error.message?.includes('foreign key') || errorAny.code === '23503') {
+              if (error.message.includes('chain_id') || errorAny.details?.includes('chain_id')) {
+                errorMsg = `Chain ID "${row.chain_id}" not found. Import chains first.`;
+              } else {
+                errorMsg = `Foreign key constraint violation: ${error.message}`;
+              }
+            } else if (error.message?.includes('duplicate') || error.message?.includes('unique constraint') || errorAny.code === '23505') {
+              errorMsg = `Region ID "${row.region_id}" already exists. The row will be updated with new values.`;
+              // This is actually OK for upsert, so we can continue
+              if (data && data.length > 0) {
+                insertedCount++;
+                continue;
+              }
+            } else {
+              const errorAny = error as any;
+              errorMsg = `Database error: ${error.message || 'Unknown error'}`;
+              if (errorAny.details) errorMsg += ` (${errorAny.details})`;
+              if (errorAny.hint) errorMsg += ` Hint: ${errorAny.hint}`;
+            }
+            
+            result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
+            if (!insertError) insertError = error;
+            continue; // Continue with next row
+          }
+          if (data && data.length > 0) {
+            console.log(`Successfully inserted/updated ad_regions row:`, data[0]);
+            insertedCount++;
+          }
+        }
       } else if (tableType === 'stores') {
         // Stores uses store_id as primary key
         const { error, data } = await supabaseClient
@@ -475,6 +734,10 @@ serve(async (req) => {
         // Only return error if no rows were inserted at all
         console.error('Insert error:', insertError);
         console.error('Error details:', JSON.stringify(insertError, null, 2));
+        const errorAny = insertError as any;
+        console.error('Error code:', errorAny.code);
+        console.error('Error hint:', errorAny.hint);
+        console.error('Error details:', errorAny.details);
         result.imported = insertedCount;
         
         // Extract detailed error message
@@ -536,12 +799,13 @@ serve(async (req) => {
           }
         } else {
           // Generic error with details
+          const errorAny = insertError as any;
           result.errors.push(`Import Error: ${errorMsg}`);
-          if (insertError.details) {
-            result.errors.push(`Details: ${insertError.details}`);
+          if (errorAny.details) {
+            result.errors.push(`Details: ${errorAny.details}`);
           }
-          if (insertError.hint) {
-            result.errors.push(`Hint: ${insertError.hint}`);
+          if (errorAny.hint) {
+            result.errors.push(`Hint: ${errorAny.hint}`);
           }
         }
         
@@ -554,11 +818,22 @@ serve(async (req) => {
       // If some rows were inserted but there were errors, continue
       if (insertError && insertedCount > 0) {
         console.warn('Partial import success:', insertedCount, 'rows inserted, but errors occurred');
-        result.errors.push(`Partial import: ${insertError.message}`);
+        if (!result.errors.some(e => e.includes('Partial import'))) {
+          result.errors.push(`Partial import: ${insertedCount} rows imported, but some errors occurred.`);
+        }
       }
 
       console.log(`Successfully imported ${insertedCount || validRows.length} rows`);
       result.imported = insertedCount || validRows.length;
+      
+      // If there were errors but some rows were imported, still return success with warnings
+      if (insertError && insertedCount > 0 && result.errors.length > 0) {
+        // Return 200 with errors in the response
+        return new Response(
+          JSON.stringify(result),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     } else {
       console.log('No valid rows to import');
       result.imported = 0;
@@ -570,8 +845,18 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
+    console.error('Unhandled error in import-csv function:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message || 'Unknown error occurred',
+        details: error.details || error.toString(),
+        stack: error.stack,
+        validRows: 0,
+        errors: [`Import failed: ${error.message || 'Unknown error'}`]
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
