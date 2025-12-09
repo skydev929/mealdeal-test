@@ -12,8 +12,8 @@ const TABLES = {
   chains: 'Chains',
   stores: 'Stores',
   lookups_categories: 'Categories',
-  ad_regions: 'Ad Regions',
-  store_region_map: 'Store-Region Map',
+  // ad_regions: 'Ad Regions',
+  // store_region_map: 'Store-Region Map',
   postal_codes: 'Postal Codes',
   dish_ingredients: 'Dish Ingredients',
 };
