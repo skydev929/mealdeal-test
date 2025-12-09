@@ -33,7 +33,7 @@ export interface Ingredient {
 
 export interface Offer {
   offer_id: number;
-  region_id: number;
+  region_id: string;  // Changed from number to string (region_id is now TEXT)
   ingredient_id: string;
   price_total: number;
   pack_size: number;
@@ -45,13 +45,13 @@ export interface Offer {
 }
 
 export interface Chain {
-  chain_id: number;
+  chain_id: string;  // Changed from number to string (chain_id is now TEXT)
   chain_name: string;
 }
 
 export interface Store {
-  store_id: number;
-  chain_id: number;
+  store_id: string;  // Changed from number to string (store_id is now TEXT)
+  chain_id: string;  // Changed from number to string (chain_id is now TEXT)
   store_name: string;
   plz?: string;
   city?: string;
@@ -90,6 +90,15 @@ export interface DishIngredient {
   price_baseline_per_unit?: number;
   current_offer_price?: number;
   has_offer: boolean;
+  // Enhanced offer details
+  offer_source?: string;
+  offer_valid_from?: string;
+  offer_valid_to?: string;
+  offer_pack_size?: number;
+  offer_unit_base?: string;
+  offer_price_total?: number;
+  price_per_unit_offer?: number; // Calculated price per unit from offer
+  price_per_unit_baseline?: number; // Baseline price per unit
 }
 
 // API Service Class
@@ -170,7 +179,7 @@ class ApiService {
         const chain = await this.getChainByName(filters.chain);
         if (chain) {
           // Get region_ids from PLZ if provided
-          let regionIds: number[] = [];
+          let regionIds: string[] = [];  // Changed from number[] to string[] (region_id is now TEXT)
           if (filters?.plz) {
             const { data: postalData } = await supabase
               .from('postal_codes')
@@ -261,7 +270,7 @@ class ApiService {
   async getDishIngredients(dishId: string, plz?: string | null): Promise<DishIngredient[]> {
     try {
       // Get region_id from PLZ if provided
-      let regionIds: number[] = [];
+      let regionIds: string[] = [];  // Changed from number[] to string[] (region_id is now TEXT)
       if (plz) {
         const { data: postalData } = await supabase
           .from('postal_codes')
@@ -299,23 +308,33 @@ class ApiService {
       const today = new Date().toISOString().split('T')[0];
 
       // Get current offers for these ingredients if region available
+      // Select the LOWEST price offer per ingredient when multiple offers exist
       let offers: any[] = [];
       
       if (regionIds.length > 0 && ingredientIds.length > 0) {
         const { data: offersData } = await supabase
           .from('offers')
-          .select('ingredient_id, price_total, pack_size, unit_base')
+          .select('ingredient_id, price_total, pack_size, unit_base, source, valid_from, valid_to, offer_id')
           .in('ingredient_id', ingredientIds)
           .in('region_id', regionIds)
           .lte('valid_from', today)
-          .gte('valid_to', today);
+          .gte('valid_to', today)
+          .order('price_total', { ascending: true }); // Order by price ascending
 
         if (offersData) {
-          offers = offersData;
+          // Group by ingredient_id and keep only the lowest price offer for each
+          const offersByIngredient = new Map<string, any>();
+          for (const offer of offersData) {
+            const existing = offersByIngredient.get(offer.ingredient_id);
+            if (!existing || offer.price_total < existing.price_total) {
+              offersByIngredient.set(offer.ingredient_id, offer);
+            }
+          }
+          offers = Array.from(offersByIngredient.values());
         }
       }
 
-      // Map offers by ingredient_id
+      // Map offers by ingredient_id (now contains only lowest price offer per ingredient)
       const offersMap = new Map(
         offers.map((o) => [o.ingredient_id, o])
       );
@@ -339,6 +358,18 @@ class ApiService {
           }
         }
 
+        // Calculate price per unit for comparison
+        let pricePerUnitOffer: number | undefined;
+        let pricePerUnitBaseline: number | undefined;
+        
+        if (offer && offer.pack_size > 0) {
+          pricePerUnitOffer = offer.price_total / offer.pack_size;
+        }
+        
+        if (ingredient && ingredient.price_baseline_per_unit) {
+          pricePerUnitBaseline = ingredient.price_baseline_per_unit;
+        }
+
         return {
           dish_id: di.dish_id,
           ingredient_id: di.ingredient_id,
@@ -351,6 +382,15 @@ class ApiService {
           price_baseline_per_unit: ingredient ? ingredient.price_baseline_per_unit : undefined,
           current_offer_price: currentOfferPrice,
           has_offer: !!offer,
+          // Enhanced offer details
+          offer_source: offer?.source,
+          offer_valid_from: offer?.valid_from,
+          offer_valid_to: offer?.valid_to,
+          offer_pack_size: offer?.pack_size,
+          offer_unit_base: offer?.unit_base,
+          offer_price_total: offer?.price_total,
+          price_per_unit_offer: pricePerUnitOffer,
+          price_per_unit_baseline: pricePerUnitBaseline,
         };
       });
     } catch (error: any) {
@@ -412,12 +452,12 @@ class ApiService {
 
   async dishHasChainOffers(
     dishId: string,
-    chainId: number,
+    chainId: string,  // Changed from number to string (chain_id is now TEXT)
     plz?: string | null
   ): Promise<boolean> {
     try {
       // Get region_id from PLZ
-      let regionIds: number[] = [];
+      let regionIds: string[] = [];  // Changed from number[] to string[] (region_id is now TEXT)
       if (plz) {
         const { data: postalData } = await supabase
           .from('postal_codes')

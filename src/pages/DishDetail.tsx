@@ -329,53 +329,108 @@ export default function DishDetail() {
                 <div>
                   <h3 className="font-semibold mb-3 text-lg">Required</h3>
                   <div className="space-y-2">
-                    {requiredIngredients.map((ing) => (
-                      <div
-                        key={ing.ingredient_id}
-                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{ing.ingredient_name}</span>
-                            {ing.has_offer && (
-                              <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
-                                On Sale
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            {ing.qty} {ing.unit}
-                            {ing.role && ` • ${ing.role}`}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium">
-                            {ing.current_offer_price !== undefined ? (
-                              <>
-                                <span className="text-green-600">€{ing.current_offer_price.toFixed(2)}</span>
-                                {(() => {
-                                  const baselinePrice = calculateBaselinePrice(ing);
-                                  if (baselinePrice !== null && baselinePrice > ing.current_offer_price) {
-                                    return (
-                                      <span className="text-xs text-muted-foreground line-through ml-2">
+                    {requiredIngredients.map((ing) => {
+                      const baselinePrice = calculateBaselinePrice(ing);
+                      const hasSavings = ing.current_offer_price !== undefined && 
+                                        baselinePrice !== null && 
+                                        baselinePrice > ing.current_offer_price;
+                      
+                      return (
+                        <div
+                          key={ing.ingredient_id}
+                          className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors space-y-2"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-base">{ing.ingredient_name}</span>
+                                {ing.has_offer && (
+                                  <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
+                                    On Sale
+                                  </Badge>
+                                )}
+                                {ing.role && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {ing.role}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                {ing.qty} {ing.unit}
+                                {ing.unit_default && ing.unit !== ing.unit_default && (
+                                  <span className="ml-1">({ing.unit_default})</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-semibold text-lg">
+                                {ing.current_offer_price !== undefined ? (
+                                  <>
+                                    <span className="text-green-600">€{ing.current_offer_price.toFixed(2)}</span>
+                                    {baselinePrice !== null && baselinePrice > ing.current_offer_price && (
+                                      <span className="text-xs text-muted-foreground line-through ml-2 block">
                                         €{baselinePrice.toFixed(2)}
                                       </span>
-                                    );
-                                  }
-                                  return null;
-                                })()}
-                              </>
-                            ) : (() => {
-                              const baselinePrice = calculateBaselinePrice(ing);
-                              if (baselinePrice !== null) {
-                                return <span>€{baselinePrice.toFixed(2)}</span>;
-                              }
-                              return <span className="text-muted-foreground text-sm">N/A</span>;
-                            })()}
+                                    )}
+                                  </>
+                                ) : (
+                                  baselinePrice !== null ? (
+                                    <span>€{baselinePrice.toFixed(2)}</span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-sm">N/A</span>
+                                  )
+                                )}
+                              </div>
+                            </div>
                           </div>
+                          
+                          {/* Enhanced offer details */}
+                          {ing.has_offer && (
+                            <div className="pt-2 border-t space-y-1.5 text-xs">
+                              {ing.offer_source && (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <span className="font-medium">Source:</span>
+                                  <span>{ing.offer_source}</span>
+                                </div>
+                              )}
+                              {ing.offer_valid_from && ing.offer_valid_to && (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <span className="font-medium">Valid:</span>
+                                  <span>
+                                    {new Date(ing.offer_valid_from).toLocaleDateString()} - {new Date(ing.offer_valid_to).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-4 flex-wrap">
+                                {ing.offer_pack_size && ing.offer_price_total !== undefined && (
+                                  <div className="text-muted-foreground">
+                                    <span className="font-medium">Pack:</span> {ing.offer_pack_size} {ing.offer_unit_base || ing.unit} for €{ing.offer_price_total.toFixed(2)}
+                                  </div>
+                                )}
+                                {ing.price_per_unit_offer !== undefined && ing.price_per_unit_baseline !== undefined && (
+                                  <div className={hasSavings ? "text-green-600" : "text-muted-foreground"}>
+                                    <span className="font-medium">Per {ing.offer_unit_base || ing.unit_default || ing.unit}:</span>{' '}
+                                    €{ing.price_per_unit_offer.toFixed(2)}
+                                    {hasSavings && (
+                                      <span className="text-muted-foreground line-through ml-1">
+                                        (was €{ing.price_per_unit_baseline.toFixed(2)})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Baseline price info when no offer */}
+                          {!ing.has_offer && ing.price_per_unit_baseline !== undefined && (
+                            <div className="pt-2 border-t text-xs text-muted-foreground">
+                              <span className="font-medium">Price per {ing.unit_default || ing.unit}:</span> €{ing.price_per_unit_baseline.toFixed(2)}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
