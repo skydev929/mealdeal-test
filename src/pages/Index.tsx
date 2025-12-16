@@ -261,7 +261,7 @@ export default function Index() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShoppingCart className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl font-bold">MealDeal</h1>
+              <h1 className="text-2xl font-bold">ThriftyWe</h1>
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />

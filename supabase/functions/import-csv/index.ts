@@ -87,7 +87,7 @@ function getExpectedColumns(tableType: string): string[] {
   const expectedColumns: Record<string, string[]> = {
     'ad_regions': ['region_id', 'chain_id', 'label'],
     'chains': ['chain_id', 'chain_name'],
-    'dish_ingredients': ['dish_id', 'ingredient_id', 'qty', 'unit', 'optional', 'role'],
+    'dish_ingredients': ['dish_id', 'ingredient_id', 'optional', 'role'], // qty and unit are optional (for assignment only, not calculations)
     'dishes': ['dish_id', 'name', 'category', 'is_quick', 'is_meal_prep', 'season', 'cuisine', 'notes'],
     'ingredients': ['ingredient_id', 'name_canonical', 'unit_default', 'price_baseline_per_unit', 'allergen_tags', 'notes'],
     'offers': ['region_id', 'ingredient_id', 'price_total', 'pack_size', 'unit_base', 'valid_from', 'valid_to', 'source', 'source_ref_id'],
@@ -106,7 +106,7 @@ function getRequiredFields(tableType: string): Set<string> {
   const requiredFields: Record<string, string[]> = {
     'ad_regions': ['region_id', 'chain_id', 'label'],
     'chains': ['chain_id', 'chain_name'],
-    'dish_ingredients': ['dish_id', 'ingredient_id', 'qty', 'unit', 'optional', 'role'],
+    'dish_ingredients': ['dish_id', 'ingredient_id', 'optional', 'role'], // qty and unit are optional (for assignment only, not calculations)
     'dishes': ['dish_id', 'name', 'category', 'is_quick', 'is_meal_prep'],
     'ingredients': ['ingredient_id', 'name_canonical', 'unit_default', 'price_baseline_per_unit'],
     'offers': ['region_id', 'ingredient_id', 'price_total', 'unit_base', 'source'],
@@ -262,14 +262,26 @@ function validateRow(
 
       case 'dish_ingredients':
         if (header === 'qty') {
+          // qty is optional - allow empty/null values
+          if (isEmptyValue(value)) {
+            rowData[header] = null; // Allow NULL for optional qty
+          } else {
           const num = parseFloat(value.replace(',', '.'));
           if (isNaN(num)) {
-            return { valid: false, error: `Invalid quantity: "${value}". Use numbers only (e.g., 250 or 250,5).` };
+              return { valid: false, error: `Invalid quantity: "${value}". Use numbers only (e.g., 250 or 250,5), or leave empty.` };
           }
           if (num <= 0) {
-            return { valid: false, error: `Invalid quantity: "${value}". Quantity must be greater than 0.` };
+              return { valid: false, error: `Invalid quantity: "${value}". Quantity must be greater than 0, or leave empty.` };
           }
           rowData[header] = num;
+          }
+        } else if (header === 'unit') {
+          // unit is optional - allow empty/null values
+          if (isEmptyValue(value)) {
+            rowData[header] = null; // Allow NULL for optional unit
+          } else {
+            rowData[header] = value; // Store unit as-is if provided
+          }
         } else if (header === 'optional') {
           rowData[header] = value.toUpperCase() === 'TRUE';
         } else {
@@ -451,7 +463,7 @@ serve(async (req) => {
       // Add offer hash for offers table
       if (tableType === 'offers' && validation.data) {
         try {
-          validation.data.offer_hash = generateOfferHash(validation.data);
+        validation.data.offer_hash = generateOfferHash(validation.data);
         } catch (hashError: any) {
           const rowNum = i + 2;
           console.error('Error generating offer hash for row:', rowNum, hashError, validation.data);
@@ -596,9 +608,9 @@ serve(async (req) => {
             console.log(`Keys in insertData:`, Object.keys(finalInsertData));
             
             const { error: insertError, data: insertDataResult } = await supabaseClient
-              .from(tableType)
+            .from(tableType)
               .insert(finalInsertData)
-              .select();
+            .select();
             
             error = insertError;
             data = insertDataResult;
@@ -719,13 +731,13 @@ serve(async (req) => {
             continue;
           }
           
-          const { error, data } = await supabaseClient
-            .from(tableType)
+        const { error, data } = await supabaseClient
+          .from(tableType)
             .upsert(row, { 
-              onConflict: 'region_id',
-              ignoreDuplicates: false 
-            })
-            .select();
+            onConflict: 'region_id',
+            ignoreDuplicates: false 
+          })
+          .select();
           if (error) {
             console.error(`Error inserting ad_regions row:`, row, error);
             console.error(`Error code:`, error.code);

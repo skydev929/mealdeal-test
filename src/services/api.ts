@@ -14,11 +14,11 @@ export interface Dish {
   season?: string;
   cuisine?: string;
   notes?: string;
-  currentPrice?: number;
-  basePrice?: number;
-  savings?: number;
-  savingsPercent?: number;
-  availableOffers?: number;
+  // Removed: currentPrice, basePrice (no total price per dish in MVP)
+  totalAggregatedSavings?: number; // Sum of per-unit savings from all ingredients with offers
+  savingsPercent?: number; // Percentage savings (calculated from aggregated savings)
+  availableOffers?: number; // Number of active offers
+  ingredientsWithOffers?: number; // Number of ingredients with active offers
   isFavorite?: boolean;
 }
 
@@ -71,11 +71,20 @@ export interface DishFilters {
 
 export interface DishPricing {
   dish_id: string;
-  base_price: number;
-  offer_price: number;
-  savings: number;
-  savings_percent: number;
-  available_offers_count: number;
+  // Removed: base_price, offer_price (no total price per dish)
+  total_aggregated_savings: number; // Sum of per-unit savings from all ingredients with offers
+  ingredients_with_offers_count: number; // Number of ingredients with active offers
+  available_offers_count: number; // Total number of active offers
+}
+
+export interface IngredientSavings {
+  ingredient_id: string;
+  ingredient_name: string;
+  base_price_per_unit: number;
+  offer_price_per_unit: number;
+  savings_per_unit: number;
+  unit: string; // kg/liter/piece
+  has_offer: boolean;
 }
 
 export interface IngredientOffer {
@@ -96,13 +105,15 @@ export interface DishIngredient {
   dish_id: string;
   ingredient_id: string;
   ingredient_name: string;
-  qty: number;
-  unit: string;
-  unit_default?: string; // Ingredient's default unit (for price conversion)
+  qty?: number; // Optional - dish_ingredients is for assignment only
+  unit?: string; // Optional - dish_ingredients is for assignment only
+  unit_default?: string; // Ingredient's default unit (kg/liter/piece)
   optional: boolean;
-  role?: string;
-  price_baseline_per_unit?: number;
-  current_offer_price?: number; // Price from lowest offer (for calculation)
+  role?: string; // 'main', 'side', 'Hauptzutat', 'Nebenzutat', etc.
+  // Per-unit pricing (not quantity-based)
+  price_baseline_per_unit?: number; // Baseline price per unit
+  offer_price_per_unit?: number; // Lowest offer price per unit
+  savings_per_unit?: number; // Savings per unit = base_price_per_unit - offer_price_per_unit
   has_offer: boolean;
   // Enhanced offer details - now includes ALL offers
   all_offers?: IngredientOffer[]; // All available offers for this ingredient
@@ -112,8 +123,7 @@ export interface DishIngredient {
   offer_pack_size?: number; // Deprecated - use all_offers[0] if needed
   offer_unit_base?: string; // Deprecated - use all_offers[0] if needed
   offer_price_total?: number; // Deprecated - use all_offers[0] if needed
-  price_per_unit_offer?: number; // Deprecated - use all_offers (lowest price one)
-  price_per_unit_baseline?: number; // Baseline price per unit
+  price_per_unit_baseline?: number; // Deprecated - use price_baseline_per_unit
 }
 
 // API Service Class
@@ -152,40 +162,56 @@ class ApiService {
         }
       }
 
-      // Calculate pricing for each dish
-      const dishesWithPricing = await Promise.all(
+      // Get region_id from PLZ if provided
+      let regionId: string | null = null;
+      if (filters?.plz) {
+        const { data: postalData } = await supabase
+          .from('postal_codes')
+          .select('region_id')
+          .eq('plz', filters.plz)
+          .limit(1);
+        if (postalData && postalData.length > 0) {
+          regionId = postalData[0].region_id;
+        }
+      }
+
+      // Calculate aggregated savings and filter dishes based on display criteria
+      // New requirement: Show dish if at least 1 main ingredient OR 2+ secondary ingredients have offers
+      const dishesWithSavings = await Promise.all(
         (data || []).map(async (dish) => {
           const pricing = await this.getDishPricing(dish.dish_id, filters?.plz);
           
+          // Check if dish should be displayed using should_display_dish function
+          let shouldDisplay = false;
+          if (regionId) {
+            const { data: displayData, error: displayError } = await supabase.rpc('should_display_dish', {
+              _dish_id: dish.dish_id,
+              _region_id: regionId,
+            });
+            if (!displayError && displayData !== null) {
+              shouldDisplay = displayData;
+            }
+          }
+          
           return {
             ...dish,
-            currentPrice: pricing?.offer_price ?? pricing?.base_price ?? 0,
-            basePrice: pricing?.base_price ?? 0,
-            savings: pricing?.savings ?? 0,
-            savingsPercent: pricing?.savings_percent ?? 0,
+            totalAggregatedSavings: pricing?.total_aggregated_savings ?? 0,
+            ingredientsWithOffers: pricing?.ingredients_with_offers_count ?? 0,
             availableOffers: pricing?.available_offers_count ?? 0,
+            shouldDisplay, // Flag for filtering
           };
         })
       );
 
-      // Filter to show only dishes with available offers
-      // Requirement: "only offer available meals"
-      // - If PLZ is provided and valid: filter by offers > 0
+      // Filter dishes based on display criteria
+      // - If PLZ provided: use should_display_dish result
       // - If no PLZ: show nothing (empty list) since offers require PLZ
-      let filtered = dishesWithPricing;
-      if (filters?.plz) {
-        // PLZ is valid (we validated above), filter by offers
-        filtered = dishesWithPricing.filter((d) => d.availableOffers > 0);
+      let filtered = dishesWithSavings;
+      if (filters?.plz && regionId) {
+        filtered = dishesWithSavings.filter((d) => d.shouldDisplay);
       } else {
         // No PLZ provided - show nothing since we can't determine offers
         filtered = [];
-      }
-
-      // Filter by max price if specified
-      if (filters?.maxPrice) {
-        filtered = filtered.filter(
-          (d) => d.currentPrice <= filters.maxPrice!
-        );
       }
 
       // Filter by chain if specified (requires checking offers)
@@ -259,7 +285,8 @@ class ApiService {
         }
       }
 
-      return filtered;
+      // Remove shouldDisplay flag before returning
+      return filtered.map(({ shouldDisplay, ...dish }) => dish);
     } catch (error: any) {
       console.error('Error fetching dishes:', error);
       throw new Error(error?.message || 'Failed to load dishes. Please try again.');
@@ -357,40 +384,32 @@ class ApiService {
       }
 
       // Transform to DishIngredient format
+      // NEW: Calculate per-unit savings only (not quantity-based prices)
       return dishIngredients.map((di: any) => {
         const ingredient = ingredientsMap.get(di.ingredient_id);
         const allOffers = allOffersByIngredient.get(di.ingredient_id) || [];
         const lowestPriceOffer = lowestPriceOfferMap.get(di.ingredient_id);
         
-        // Calculate offer price using the LOWEST price offer (for calculation)
-        let currentOfferPrice: number | undefined;
-        if (lowestPriceOffer) {
-          // Convert qty to offer unit, then calculate price
-          const qtyInOfferUnit = this.convertUnitForPricing(
-            di.qty,
-            di.unit,
-            lowestPriceOffer.unit_base
-          );
-          if (qtyInOfferUnit !== null && lowestPriceOffer.pack_size > 0) {
-            currentOfferPrice = (qtyInOfferUnit / lowestPriceOffer.pack_size) * lowestPriceOffer.price_total;
+        // Calculate per-unit prices (not quantity-based)
+        const basePricePerUnit = ingredient?.price_baseline_per_unit ?? undefined;
+        let offerPricePerUnit: number | undefined;
+        let savingsPerUnit: number | undefined;
+        
+        if (lowestPriceOffer && lowestPriceOffer.pack_size > 0) {
+          offerPricePerUnit = lowestPriceOffer.price_total / lowestPriceOffer.pack_size;
+          if (basePricePerUnit !== undefined) {
+            savingsPerUnit = basePricePerUnit - offerPricePerUnit;
+            // Only positive savings (if offer is cheaper than baseline)
+            if (savingsPerUnit < 0) {
+              savingsPerUnit = 0;
+            }
           }
         }
 
-        // Process ALL offers with calculated prices and mark the lowest one
+        // Process ALL offers with per-unit prices and mark the lowest one
         const processedOffers: IngredientOffer[] = allOffers.map((offer: any, index: number) => {
           // Calculate price per unit
           const pricePerUnit = offer.pack_size > 0 ? offer.price_total / offer.pack_size : 0;
-          
-          // Calculate price for the required qty in this dish
-          let calculatedPriceForQty: number | undefined;
-          const qtyInOfferUnit = this.convertUnitForPricing(
-            di.qty,
-            di.unit,
-            offer.unit_base
-          );
-          if (qtyInOfferUnit !== null && offer.pack_size > 0) {
-            calculatedPriceForQty = (qtyInOfferUnit / offer.pack_size) * offer.price_total;
-          }
 
           return {
             offer_id: offer.offer_id,
@@ -402,34 +421,24 @@ class ApiService {
             valid_to: offer.valid_to,
             source_ref_id: offer.source_ref_id,
             price_per_unit: pricePerUnit,
-            calculated_price_for_qty: calculatedPriceForQty,
+            calculated_price_for_qty: undefined, // No longer used - per-unit only
             is_lowest_price: index === 0, // First offer (lowest price) is used in calculation
           };
         });
-
-        // Calculate price per unit for comparison (from lowest offer)
-        let pricePerUnitOffer: number | undefined;
-        let pricePerUnitBaseline: number | undefined;
-        
-        if (lowestPriceOffer && lowestPriceOffer.pack_size > 0) {
-          pricePerUnitOffer = lowestPriceOffer.price_total / lowestPriceOffer.pack_size;
-        }
-        
-        if (ingredient && ingredient.price_baseline_per_unit) {
-          pricePerUnitBaseline = ingredient.price_baseline_per_unit;
-        }
 
         return {
           dish_id: di.dish_id,
           ingredient_id: di.ingredient_id,
           ingredient_name: ingredient ? ingredient.name_canonical : '',
-          qty: di.qty,
-          unit: di.unit,
+          qty: di.qty, // Optional - kept for display purposes only
+          unit: di.unit, // Optional - kept for display purposes only
           unit_default: ingredient ? ingredient.unit_default : undefined,
           optional: di.optional || false,
           role: di.role || undefined,
-          price_baseline_per_unit: ingredient ? ingredient.price_baseline_per_unit : undefined,
-          current_offer_price: currentOfferPrice, // Price from lowest offer
+          // Per-unit pricing (not quantity-based)
+          price_baseline_per_unit: basePricePerUnit,
+          offer_price_per_unit: offerPricePerUnit,
+          savings_per_unit: savingsPerUnit,
           has_offer: allOffers.length > 0,
           // ALL offers for this ingredient
           all_offers: processedOffers,
@@ -440,8 +449,7 @@ class ApiService {
           offer_pack_size: lowestPriceOffer?.pack_size,
           offer_unit_base: lowestPriceOffer?.unit_base,
           offer_price_total: lowestPriceOffer?.price_total,
-          price_per_unit_offer: pricePerUnitOffer,
-          price_per_unit_baseline: pricePerUnitBaseline,
+          price_per_unit_baseline: basePricePerUnit,
         };
       });
     } catch (error: any) {
@@ -479,13 +487,13 @@ class ApiService {
     plz?: string | null
   ): Promise<DishPricing | null> {
     try {
-      const { data, error } = await supabase.rpc('calculate_dish_price', {
+      const { data, error } = await supabase.rpc('calculate_dish_aggregated_savings', {
         _dish_id: dishId,
         _user_plz: plz || null,
       });
 
       if (error) {
-        console.error('RPC error calculating dish price:', error);
+        console.error('RPC error calculating dish aggregated savings:', error);
         throw error;
       }
       
@@ -495,8 +503,45 @@ class ApiService {
 
       return data[0];
     } catch (error: any) {
-      console.error('Error calculating dish price:', error);
-      // Return null to allow dishes to show with zero pricing rather than failing completely
+      console.error('Error calculating dish aggregated savings:', error);
+      // Return null to allow dishes to show with zero savings rather than failing completely
+      return null;
+    }
+  }
+
+  async getIngredientSavings(
+    ingredientId: string,
+    regionId: string,
+    unit?: string | null
+  ): Promise<IngredientSavings | null> {
+    try {
+      const { data, error } = await supabase.rpc('calculate_ingredient_savings_per_unit', {
+        _ingredient_id: ingredientId,
+        _region_id: regionId,
+        _unit: unit || null,
+      });
+
+      if (error) {
+        console.error('RPC error calculating ingredient savings:', error);
+        throw error;
+      }
+      
+      if (!data || data.length === 0) {
+        return null;
+      }
+
+      const result = data[0];
+      return {
+        ingredient_id: result.ingredient_id,
+        ingredient_name: '', // Will be filled by caller if needed
+        base_price_per_unit: result.base_price_per_unit,
+        offer_price_per_unit: result.offer_price_per_unit,
+        savings_per_unit: result.savings_per_unit,
+        unit: result.unit,
+        has_offer: result.has_offer,
+      };
+    } catch (error: any) {
+      console.error('Error calculating ingredient savings:', error);
       return null;
     }
   }

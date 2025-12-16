@@ -130,67 +130,8 @@ export default function DishDetail() {
   const requiredIngredients = ingredients.filter((ing) => !ing.optional);
   const optionalIngredients = ingredients.filter((ing) => ing.optional);
 
-  // Helper function to convert units (matches database logic)
-  const convertUnit = (qty: number, fromUnit: string, toUnit: string): number | null => {
-    if (!fromUnit || !toUnit) return null;
-    
-    const from = fromUnit.toLowerCase().trim();
-    const to = toUnit.toLowerCase().trim();
-
-    if (from === to) return qty;
-
-    // Weight conversions
-    if (from === 'g' && to === 'kg') return qty / 1000.0;
-    if (from === 'kg' && to === 'g') return qty * 1000.0;
-
-    // Volume conversions
-    if (from === 'ml' && to === 'l') return qty / 1000.0;
-    if (from === 'l' && to === 'ml') return qty * 1000.0;
-
-    // Piece units
-    if ((from === 'stück' || from === 'st') && (to === 'stück' || to === 'st')) {
-      return qty;
-    }
-
-    // Non-convertible units
-    return null;
-  };
-
-  // Calculate ingredient pricing with proper unit conversion
-  const calculateIngredientPrice = (ing: DishIngredient): number => {
-    if (ing.current_offer_price !== undefined) {
-      return ing.current_offer_price;
-    }
-    if (ing.price_baseline_per_unit && ing.unit_default) {
-      // Convert qty from dish_ingredients.unit to ingredients.unit_default
-      const convertedQty = convertUnit(ing.qty, ing.unit, ing.unit_default);
-      if (convertedQty !== null) {
-        return convertedQty * ing.price_baseline_per_unit;
-      }
-      // If conversion not possible, try direct calculation (may be wrong for non-matching units)
-      // This handles cases like EL, TL, Bund where conversion isn't possible
-      return ing.qty * ing.price_baseline_per_unit;
-    }
-    return 0;
-  };
-
-  // Calculate baseline price for display (with unit conversion)
-  const calculateBaselinePrice = (ing: DishIngredient): number | null => {
-    if (!ing.price_baseline_per_unit || !ing.unit_default) {
-      return null;
-    }
-    const convertedQty = convertUnit(ing.qty, ing.unit, ing.unit_default);
-    if (convertedQty !== null) {
-      return convertedQty * ing.price_baseline_per_unit;
-    }
-    // Fallback for non-convertible units
-    return ing.qty * ing.price_baseline_per_unit;
-  };
-
-  const totalIngredientPrice = ingredients.reduce(
-    (sum, ing) => sum + calculateIngredientPrice(ing),
-    0
-  );
+  // Calculate total aggregated savings (sum of per-unit savings)
+  const totalAggregatedSavings = pricing?.total_aggregated_savings ?? 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -253,42 +194,33 @@ export default function DishDetail() {
             </div>
           </CardHeader>
           <CardContent>
-            {/* Pricing Summary */}
+            {/* Aggregated Savings Summary */}
             <div className="space-y-4">
-              <div className="flex items-baseline gap-4">
-                <div>
-                  <div className="text-sm text-muted-foreground mb-1">Current Price</div>
-                  <div className="text-4xl font-bold text-primary">
-                    €{(pricing?.offer_price ?? pricing?.base_price ?? 0).toFixed(2)}
-                  </div>
-                </div>
-                {pricing && pricing.base_price > pricing.offer_price && (
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Base Price</div>
-                    <div className="text-2xl text-muted-foreground line-through">
-                      €{pricing.base_price.toFixed(2)}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {pricing && pricing.savings > 0 && (
+              {totalAggregatedSavings > 0 && (
                 <div className="flex items-center gap-2">
-                  <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white text-base px-3 py-1">
-                    <CheckCircle2 className="h-4 w-4 mr-1" />
-                    Save €{pricing.savings.toFixed(2)} ({pricing.savings_percent.toFixed(1)}%)
+                  <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white text-lg px-4 py-2">
+                    <CheckCircle2 className="h-5 w-5 mr-2" />
+                    Total Savings: €{totalAggregatedSavings.toFixed(2)}
                   </Badge>
-                  {pricing.available_offers_count > 0 && (
+                  {pricing && pricing.ingredients_with_offers_count > 0 && (
                     <Badge variant="outline" className="text-sm">
-                      {pricing.available_offers_count} {pricing.available_offers_count === 1 ? 'offer' : 'offers'} available
+                      {pricing.ingredients_with_offers_count} {pricing.ingredients_with_offers_count === 1 ? 'ingredient' : 'ingredients'} on offer
                     </Badge>
                   )}
                 </div>
               )}
 
+              {pricing && pricing.available_offers_count > 0 && totalAggregatedSavings === 0 && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-sm">
+                    {pricing.available_offers_count} {pricing.available_offers_count === 1 ? 'offer' : 'offers'} available
+                  </Badge>
+                </div>
+              )}
+
               {userPLZ && (
                 <p className="text-sm text-muted-foreground">
-                  Prices for PLZ {userPLZ}
+                  Offers for PLZ {userPLZ}
                 </p>
               )}
               {!userPLZ && (
@@ -299,6 +231,14 @@ export default function DishDetail() {
                   to see current offers and savings
                 </p>
               )}
+
+              {/* Important Notice */}
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
+                <p className="text-sm text-blue-900 dark:text-blue-100">
+                  <strong>Note:</strong> Savings are based on prices per kilo/liter/piece. 
+                  Quantities shown are for reference only and are not used in calculations.
+                </p>
+              </div>
             </div>
 
             {dish.notes && (
@@ -330,10 +270,7 @@ export default function DishDetail() {
                   <h3 className="font-semibold mb-3 text-lg">Required</h3>
                   <div className="space-y-2">
                     {requiredIngredients.map((ing) => {
-                      const baselinePrice = calculateBaselinePrice(ing);
-                      const hasSavings = ing.current_offer_price !== undefined && 
-                                        baselinePrice !== null && 
-                                        baselinePrice > ing.current_offer_price;
+                      const hasSavings = ing.savings_per_unit !== undefined && ing.savings_per_unit > 0;
                       
                       return (
                         <div
@@ -355,32 +292,31 @@ export default function DishDetail() {
                                   </Badge>
                                 )}
                               </div>
-                              <div className="text-sm text-muted-foreground mt-1">
-                                {ing.qty} {ing.unit}
-                                {ing.unit_default && ing.unit !== ing.unit_default && (
-                                  <span className="ml-1">({ing.unit_default})</span>
-                                )}
-                              </div>
                             </div>
                             <div className="text-right">
-                              <div className="font-semibold text-lg">
-                                {ing.current_offer_price !== undefined ? (
-                                  <>
-                                    <span className="text-green-600">€{ing.current_offer_price.toFixed(2)}</span>
-                                    {baselinePrice !== null && baselinePrice > ing.current_offer_price && (
-                                      <span className="text-xs text-muted-foreground line-through ml-2 block">
-                                        €{baselinePrice.toFixed(2)}
-                                      </span>
-                                    )}
-                                  </>
-                                ) : (
-                                  baselinePrice !== null ? (
-                                    <span>€{baselinePrice.toFixed(2)}</span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-sm">N/A</span>
-                                  )
-                                )}
-                              </div>
+                              {/* Per-unit pricing display (from ingredients table) */}
+                              {ing.price_baseline_per_unit !== undefined && ing.unit_default && (
+                                <div className="space-y-1">
+                                  <div className="text-sm text-muted-foreground">
+                                    Base: €{ing.price_baseline_per_unit.toFixed(2)}/{ing.unit_default}
+                                  </div>
+                                  {ing.offer_price_per_unit !== undefined && (
+                                    <>
+                                      <div className={`font-semibold ${hasSavings ? 'text-green-600' : 'text-foreground'}`}>
+                                        Offer: €{ing.offer_price_per_unit.toFixed(2)}/{ing.unit_default}
+                                      </div>
+                                      {hasSavings && ing.savings_per_unit !== undefined && (
+                                        <div className="text-sm font-semibold text-green-600">
+                                          Save: €{ing.savings_per_unit.toFixed(2)}/{ing.unit_default}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                              {(!ing.price_baseline_per_unit || !ing.unit_default) && (
+                                <span className="text-muted-foreground text-sm">N/A</span>
+                              )}
                             </div>
                           </div>
                           
@@ -423,9 +359,9 @@ export default function DishDetail() {
                                           )}
                                         </div>
                                         <div className="text-right">
-                                          {offer.calculated_price_for_qty !== undefined && (
+                                          {offer.price_per_unit !== undefined && (
                                             <div className={`font-semibold ${isLowestPrice ? 'text-green-700' : 'text-foreground'}`}>
-                                              €{offer.calculated_price_for_qty.toFixed(2)}
+                                              €{offer.price_per_unit.toFixed(2)}/{offer.unit_base}
                                             </div>
                                           )}
                                         </div>
@@ -439,10 +375,10 @@ export default function DishDetail() {
                                         {offer.price_per_unit !== undefined && (
                                           <span>
                                             <span className="font-medium">Per {offer.unit_base || ing.unit_default || ing.unit}:</span> €{offer.price_per_unit.toFixed(2)}
-                                            {isLowestPrice && ing.price_per_unit_baseline !== undefined && 
-                                             offer.price_per_unit < ing.price_per_unit_baseline && (
+                                            {isLowestPrice && ing.price_baseline_per_unit !== undefined && 
+                                             offer.price_per_unit < ing.price_baseline_per_unit && (
                                               <span className="line-through ml-1 text-xs">
-                                                (was €{ing.price_per_unit_baseline.toFixed(2)})
+                                                (was €{ing.price_baseline_per_unit.toFixed(2)}/{ing.unit_default || offer.unit_base})
                                               </span>
                                             )}
                                           </span>
@@ -454,7 +390,7 @@ export default function DishDetail() {
                               </div>
                               {ing.all_offers.length > 1 && (
                                 <div className="text-xs text-muted-foreground italic pt-1">
-                                  Note: The lowest price offer (marked "Best Price") is used for total cost calculation.
+                                  Note: The lowest price offer (marked "Best Price") is used for savings calculation.
                                 </div>
                               )}
                             </div>
@@ -519,10 +455,7 @@ export default function DishDetail() {
                     <h3 className="font-semibold mb-3 text-lg">Optional</h3>
                     <div className="space-y-2">
                       {optionalIngredients.map((ing) => {
-                        const baselinePrice = calculateBaselinePrice(ing);
-                        const hasSavings = ing.current_offer_price !== undefined && 
-                                          baselinePrice !== null && 
-                                          baselinePrice > ing.current_offer_price;
+                        const hasSavings = ing.savings_per_unit !== undefined && ing.savings_per_unit > 0;
                         
                         return (
                           <div
@@ -545,32 +478,31 @@ export default function DishDetail() {
                                     </Badge>
                                   )}
                                 </div>
-                                <div className="text-sm text-muted-foreground mt-1">
-                                  {ing.qty} {ing.unit}
-                                  {ing.unit_default && ing.unit !== ing.unit_default && (
-                                    <span className="ml-1">({ing.unit_default})</span>
-                                  )}
-                                </div>
                               </div>
                               <div className="text-right">
-                                <div className={`font-semibold ${ing.current_offer_price ? 'text-lg' : 'text-base text-muted-foreground'}`}>
-                                  {ing.current_offer_price !== undefined ? (
-                                    <>
-                                      <span className="text-green-600">€{ing.current_offer_price.toFixed(2)}</span>
-                                      {baselinePrice !== null && baselinePrice > ing.current_offer_price && (
-                                        <span className="text-xs text-muted-foreground line-through ml-2 block">
-                                          €{baselinePrice.toFixed(2)}
-                                        </span>
-                                      )}
-                                    </>
-                                  ) : (
-                                    baselinePrice !== null ? (
-                                      <span>€{baselinePrice.toFixed(2)}</span>
-                                    ) : (
-                                      <span className="text-sm">N/A</span>
-                                    )
-                                  )}
-                                </div>
+                                {/* Per-unit pricing display (from ingredients table) */}
+                                {ing.price_baseline_per_unit !== undefined && ing.unit_default && (
+                                  <div className="space-y-1">
+                                    <div className="text-sm text-muted-foreground">
+                                      Base: €{ing.price_baseline_per_unit.toFixed(2)}/{ing.unit_default}
+                                    </div>
+                                    {ing.offer_price_per_unit !== undefined && (
+                                      <>
+                                        <div className={`font-semibold ${hasSavings ? 'text-green-600' : 'text-foreground'}`}>
+                                          Offer: €{ing.offer_price_per_unit.toFixed(2)}/{ing.unit_default}
+                                        </div>
+                                        {hasSavings && ing.savings_per_unit !== undefined && (
+                                          <div className="text-sm font-semibold text-green-600">
+                                            Save: €{ing.savings_per_unit.toFixed(2)}/{ing.unit_default}
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                                {(!ing.price_baseline_per_unit || !ing.unit_default) && (
+                                  <span className="text-muted-foreground text-sm">N/A</span>
+                                )}
                               </div>
                             </div>
                             
@@ -613,9 +545,9 @@ export default function DishDetail() {
                                             )}
                                           </div>
                                           <div className="text-right">
-                                            {offer.calculated_price_for_qty !== undefined && (
+                                            {offer.price_per_unit !== undefined && (
                                               <div className={`font-semibold ${isLowestPrice ? 'text-green-700' : 'text-foreground'}`}>
-                                                €{offer.calculated_price_for_qty.toFixed(2)}
+                                                €{offer.price_per_unit.toFixed(2)}/{offer.unit_base}
                                               </div>
                                             )}
                                           </div>
@@ -629,10 +561,10 @@ export default function DishDetail() {
                                           {offer.price_per_unit !== undefined && (
                                             <span>
                                               <span className="font-medium">Per {offer.unit_base || ing.unit_default || ing.unit}:</span> €{offer.price_per_unit.toFixed(2)}
-                                              {isLowestPrice && ing.price_per_unit_baseline !== undefined && 
-                                               offer.price_per_unit < ing.price_per_unit_baseline && (
+                                              {isLowestPrice && ing.price_baseline_per_unit !== undefined && 
+                                               offer.price_per_unit < ing.price_baseline_per_unit && (
                                                 <span className="line-through ml-1 text-xs">
-                                                  (was €{ing.price_per_unit_baseline.toFixed(2)})
+                                                  (was €{ing.price_baseline_per_unit.toFixed(2)}/{ing.unit_default || offer.unit_base})
                                                 </span>
                                               )}
                                             </span>
@@ -644,16 +576,16 @@ export default function DishDetail() {
                                 </div>
                                 {ing.all_offers.length > 1 && (
                                   <div className="text-xs text-muted-foreground italic pt-1">
-                                    Note: The lowest price offer (marked "Best Price") is used for total cost calculation.
+                                    Note: The lowest price offer (marked "Best Price") is used for savings calculation.
                                   </div>
                                 )}
                               </div>
                             )}
                             
                             {/* Baseline price info when no offer */}
-                            {!ing.has_offer && ing.price_per_unit_baseline !== undefined && (
+                            {!ing.has_offer && ing.price_baseline_per_unit !== undefined && ing.unit_default && (
                               <div className="pt-2 border-t text-xs text-muted-foreground">
-                                <span className="font-medium">Price per {ing.unit_default || ing.unit}:</span> €{ing.price_per_unit_baseline.toFixed(2)}
+                                <span className="font-medium">Price per {ing.unit_default}:</span> €{ing.price_baseline_per_unit.toFixed(2)}
                               </div>
                             )}
                           </div>
@@ -664,21 +596,6 @@ export default function DishDetail() {
                 </>
               )}
 
-              {/* Pricing Summary */}
-              <Separator />
-              <div className="bg-muted/50 p-4 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold">Total Ingredients Cost</span>
-                  <span className="text-lg font-bold">
-                    €{totalIngredientPrice.toFixed(2)}
-                  </span>
-                </div>
-                {pricing && pricing.base_price !== totalIngredientPrice && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Note: Calculated price may differ due to unit conversions and offer calculations
-                  </p>
-                )}
-              </div>
             </div>
           </CardContent>
         </Card>

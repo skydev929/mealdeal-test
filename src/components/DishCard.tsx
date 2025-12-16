@@ -12,11 +12,11 @@ interface DishCardProps {
     category: string;
     is_quick?: boolean;
     is_meal_prep?: boolean;
-    currentPrice?: number;
-    basePrice?: number;
-    savings?: number;
+    // Removed: currentPrice, basePrice (no total price per dish)
+    totalAggregatedSavings?: number; // Sum of per-unit savings
     savingsPercent?: number;
     availableOffers?: number;
+    ingredientsWithOffers?: number;
     isFavorite?: boolean;
   };
   onFavorite?: (dishId: string) => void;
@@ -24,14 +24,9 @@ interface DishCardProps {
 
 export function DishCard({ dish, onFavorite }: DishCardProps) {
   const navigate = useNavigate();
-  const savingsPercent = dish.savingsPercent !== undefined 
-    ? dish.savingsPercent 
-    : (dish.basePrice && dish.savings 
-      ? Math.round((dish.savings / dish.basePrice) * 100) 
-      : 0);
 
   const hasOffers = (dish.availableOffers ?? 0) > 0;
-  const hasSavings = dish.savings && dish.savings > 0;
+  const hasSavings = dish.totalAggregatedSavings && dish.totalAggregatedSavings > 0;
 
   const handleCardClick = () => {
     navigate(`/dish/${dish.dish_id}`);
@@ -87,26 +82,22 @@ export function DishCard({ dish, onFavorite }: DishCardProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3 flex-1 flex flex-col">
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-primary">
-            €{(dish.currentPrice || dish.basePrice || 0).toFixed(2)}
-          </span>
-          {dish.basePrice && dish.basePrice > (dish.currentPrice || 0) && (
-            <span className="text-sm text-muted-foreground line-through">
-              €{dish.basePrice.toFixed(2)}
+        {hasSavings && (
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col">
+              <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white text-base px-3 py-1">
+                Save €{dish.totalAggregatedSavings!.toFixed(2)}
+              </Badge>
+              {dish.ingredientsWithOffers && dish.ingredientsWithOffers > 0 && (
+                <span className="text-xs text-muted-foreground mt-1">
+                  {dish.ingredientsWithOffers} {dish.ingredientsWithOffers === 1 ? 'ingredient' : 'ingredients'} on offer
             </span>
           )}
         </div>
-
-        {hasSavings && (
-          <div className="flex items-center gap-2">
-            <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white">
-              Save €{dish.savings!.toFixed(2)} ({savingsPercent}%)
-            </Badge>
           </div>
         )}
 
-        {hasOffers && (
+        {hasOffers && !hasSavings && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="outline" className="text-xs">
               {dish.availableOffers} {dish.availableOffers === 1 ? 'offer' : 'offers'} available
@@ -114,9 +105,9 @@ export function DishCard({ dish, onFavorite }: DishCardProps) {
           </div>
         )}
 
-        {!hasOffers && !hasSavings && dish.currentPrice === 0 && (
+        {!hasOffers && !hasSavings && (
           <div className="text-xs text-muted-foreground italic">
-            Pricing unavailable
+            No active offers
           </div>
         )}
       </CardContent>
