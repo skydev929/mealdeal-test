@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { api, type Dish, type DishIngredient, type DishPricing } from '@/services/api';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 export default function DishDetail() {
   const { dishId } = useParams<{ dishId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { userId } = useAuth();
   const [dish, setDish] = useState<Dish | null>(null);
   const [ingredients, setIngredients] = useState<DishIngredient[]>([]);
@@ -118,7 +119,7 @@ export default function DishDetail() {
         <div className="text-center space-y-4">
           <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
           <h2 className="text-2xl font-bold">Dish not found</h2>
-          <Button onClick={() => navigate('/')}>
+          <Button onClick={() => navigate(`/${location.search}`)}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dishes
           </Button>
@@ -139,7 +140,7 @@ export default function DishDetail() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+              <Button variant="ghost" size="icon" onClick={() => navigate(`/${location.search}`)}>
                 <ArrowLeft className="h-5 w-5" />
               </Button>
               <div className="flex items-center gap-2">
@@ -178,7 +179,7 @@ export default function DishDetail() {
                     </Badge>
                   )}
                   {dish.is_meal_prep && (
-                    <Badge variant="outline" className="border-blue-500 text-blue-600">
+                    <Badge variant="outline" className="border-blue-500 text-blue-600 dark:text-blue-400">
                       <ChefHat className="h-3 w-3 mr-1" />
                       Meal Prep
                     </Badge>
@@ -233,12 +234,12 @@ export default function DishDetail() {
               )}
 
               {/* Important Notice */}
-              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
+              {/* <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
                 <p className="text-sm text-blue-900 dark:text-blue-100">
-                  <strong>Note:</strong> Savings are based on prices per kilo/liter/piece. 
-                  Quantities shown are for reference only and are not used in calculations.
+                  <strong>Note:</strong> Base prices do not include private label brands, which may explain higher prices. 
+                  Savings are calculated based on prices per kilo/liter/piece.
                 </p>
-              </div>
+              </div> */}
             </div>
 
             {dish.notes && (
@@ -282,7 +283,7 @@ export default function DishDetail() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-medium text-base">{ing.ingredient_name}</span>
                                 {ing.has_offer && (
-                                  <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
+                                  <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400">
                                     On Sale
                                   </Badge>
                                 )}
@@ -302,11 +303,11 @@ export default function DishDetail() {
                                   </div>
                                   {ing.offer_price_per_unit !== undefined && (
                                     <>
-                                      <div className={`font-semibold ${hasSavings ? 'text-green-600' : 'text-foreground'}`}>
+                                      <div className={`font-semibold ${hasSavings ? 'text-green-600 dark:text-green-400' : 'text-foreground'}`}>
                                         Offer: €{ing.offer_price_per_unit.toFixed(2)}/{ing.unit_default}
                                       </div>
                                       {hasSavings && ing.savings_per_unit !== undefined && (
-                                        <div className="text-sm font-semibold text-green-600">
+                                        <div className="text-sm font-semibold text-green-600 dark:text-green-400">
                                           Save: €{ing.savings_per_unit.toFixed(2)}/{ing.unit_default}
                                         </div>
                                       )}
@@ -334,7 +335,7 @@ export default function DishDetail() {
                                       key={offer.offer_id}
                                       className={`p-2.5 rounded-md border text-xs ${
                                         isLowestPrice
-                                          ? 'bg-green-50 border-green-200'
+                                          ? 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800'
                                           : 'bg-muted/30 border-border'
                                       }`}
                                     >
@@ -360,18 +361,13 @@ export default function DishDetail() {
                                         </div>
                                         <div className="text-right">
                                           {offer.price_per_unit !== undefined && (
-                                            <div className={`font-semibold ${isLowestPrice ? 'text-green-700' : 'text-foreground'}`}>
+                                            <div className={`font-semibold ${isLowestPrice ? 'text-green-700 dark:text-green-400' : 'text-foreground'}`}>
                                               €{offer.price_per_unit.toFixed(2)}/{offer.unit_base}
                                             </div>
                                           )}
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-3 flex-wrap text-muted-foreground">
-                                        {offer.pack_size && offer.price_total !== undefined && (
-                                          <span>
-                                            <span className="font-medium">Pack:</span> {offer.pack_size} {offer.unit_base || ing.unit} for €{offer.price_total.toFixed(2)}
-                                          </span>
-                                        )}
                                         {offer.price_per_unit !== undefined && (
                                           <span>
                                             <span className="font-medium">Per {offer.unit_base || ing.unit_default || ing.unit}:</span> €{offer.price_per_unit.toFixed(2)}
@@ -414,18 +410,13 @@ export default function DishDetail() {
                                 </div>
                               )}
                               <div className="flex items-center gap-4 flex-wrap">
-                                {ing.offer_pack_size && ing.offer_price_total !== undefined && (
-                                  <div className="text-muted-foreground">
-                                    <span className="font-medium">Pack:</span> {ing.offer_pack_size} {ing.offer_unit_base || ing.unit} for €{ing.offer_price_total.toFixed(2)}
-                                  </div>
-                                )}
-                                {ing.price_per_unit_offer !== undefined && ing.price_per_unit_baseline !== undefined && (
-                                  <div className={hasSavings ? "text-green-600" : "text-muted-foreground"}>
+                                {ing.offer_price_per_unit !== undefined && ing.price_baseline_per_unit !== undefined && (
+                                  <div className={hasSavings ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}>
                                     <span className="font-medium">Per {ing.offer_unit_base || ing.unit_default || ing.unit}:</span>{' '}
-                                    €{ing.price_per_unit_offer.toFixed(2)}
+                                    €{ing.offer_price_per_unit.toFixed(2)}
                                     {hasSavings && (
                                       <span className="text-muted-foreground line-through ml-1">
-                                        (was €{ing.price_per_unit_baseline.toFixed(2)})
+                                        (was €{ing.price_baseline_per_unit.toFixed(2)})
                                       </span>
                                     )}
                                   </div>
@@ -468,7 +459,7 @@ export default function DishDetail() {
                                   <span className="font-medium text-base">{ing.ingredient_name}</span>
                                   <Badge variant="outline" className="text-xs">Optional</Badge>
                                   {ing.has_offer && (
-                                    <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
+                                    <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400">
                                       On Sale
                                     </Badge>
                                   )}
@@ -488,11 +479,11 @@ export default function DishDetail() {
                                     </div>
                                     {ing.offer_price_per_unit !== undefined && (
                                       <>
-                                        <div className={`font-semibold ${hasSavings ? 'text-green-600' : 'text-foreground'}`}>
+                                        <div className={`font-semibold ${hasSavings ? 'text-green-600 dark:text-green-400' : 'text-foreground'}`}>
                                           Offer: €{ing.offer_price_per_unit.toFixed(2)}/{ing.unit_default}
                                         </div>
                                         {hasSavings && ing.savings_per_unit !== undefined && (
-                                          <div className="text-sm font-semibold text-green-600">
+                                          <div className="text-sm font-semibold text-green-600 dark:text-green-400">
                                             Save: €{ing.savings_per_unit.toFixed(2)}/{ing.unit_default}
                                           </div>
                                         )}
@@ -520,7 +511,7 @@ export default function DishDetail() {
                                         key={offer.offer_id}
                                         className={`p-2.5 rounded-md border text-xs ${
                                           isLowestPrice
-                                            ? 'bg-green-50 border-green-200'
+                                            ? 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800'
                                             : 'bg-background border-border'
                                         }`}
                                       >
@@ -546,18 +537,13 @@ export default function DishDetail() {
                                           </div>
                                           <div className="text-right">
                                             {offer.price_per_unit !== undefined && (
-                                              <div className={`font-semibold ${isLowestPrice ? 'text-green-700' : 'text-foreground'}`}>
+                                              <div className={`font-semibold ${isLowestPrice ? 'text-green-700 dark:text-green-400' : 'text-foreground'}`}>
                                                 €{offer.price_per_unit.toFixed(2)}/{offer.unit_base}
                                               </div>
                                             )}
                                           </div>
                                         </div>
                                         <div className="flex items-center gap-3 flex-wrap text-muted-foreground">
-                                          {offer.pack_size && offer.price_total !== undefined && (
-                                            <span>
-                                              <span className="font-medium">Pack:</span> {offer.pack_size} {offer.unit_base || ing.unit} for €{offer.price_total.toFixed(2)}
-                                            </span>
-                                          )}
                                           {offer.price_per_unit !== undefined && (
                                             <span>
                                               <span className="font-medium">Per {offer.unit_base || ing.unit_default || ing.unit}:</span> €{offer.price_per_unit.toFixed(2)}

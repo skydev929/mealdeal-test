@@ -87,7 +87,7 @@ function getExpectedColumns(tableType: string): string[] {
   const expectedColumns: Record<string, string[]> = {
     'ad_regions': ['region_id', 'chain_id', 'label'],
     'chains': ['chain_id', 'chain_name'],
-    'dish_ingredients': ['dish_id', 'ingredient_id', 'optional', 'role'], // qty and unit are optional (for assignment only, not calculations)
+    'dish_ingredients': ['dish_id', 'ingredient_id', 'qty', 'unit', 'optional', 'role'], // qty and unit are optional (for assignment only, not calculations)
     'dishes': ['dish_id', 'name', 'category', 'is_quick', 'is_meal_prep', 'season', 'cuisine', 'notes'],
     'ingredients': ['ingredient_id', 'name_canonical', 'unit_default', 'price_baseline_per_unit', 'allergen_tags', 'notes'],
     'offers': ['region_id', 'ingredient_id', 'price_total', 'pack_size', 'unit_base', 'valid_from', 'valid_to', 'source', 'source_ref_id'],
@@ -173,10 +173,11 @@ function validateRow(
       }
     }
 
-    // Skip empty values for optional fields (but not for offers pack_size which has special handling)
+    // Skip empty values for optional fields (but not for offers pack_size or dish_ingredients qty/unit which have special handling)
     // Also don't skip if it's a required field (already validated above)
     if (isEmptyValue(value) && 
         !(tableType === 'offers' && header === 'pack_size') &&
+        !(tableType === 'dish_ingredients' && (header === 'qty' || header === 'unit')) &&
         !requiredFields.has(header)) {
       rowData[header] = null;
       continue;

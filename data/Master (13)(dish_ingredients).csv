@@ -193,6 +193,6 @@ D034,I013,0.5,Stück,TRUE,side
 D034,I092,0.5,Bund,TRUE,side
 D035,I094,2,Scheiben,FALSE,main
 D035,I093,1,Stück,FALSE,main
-D035,I013,0.5,Stück,TRUE,side
-D035,I053,0.5,TL,TRUE,side
+D035,I013,0.5,,TRUE,side
+D035,I053,0.5,,TRUE,side
 

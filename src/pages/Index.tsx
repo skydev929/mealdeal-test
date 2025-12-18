@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import useAuth from '@/hooks/useAuth';
 import { api, type Dish, type DishFilters } from '@/services/api';
 import { PLZInput } from '@/components/PLZInput';
@@ -24,19 +24,104 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 export default function Index() {
   const { userId, loading: authLoading, updatePLZ, signOut, userProfile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [chains, setChains] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedChain, setSelectedChain] = useState('all');
-  const [maxPrice, setMaxPrice] = useState(30);
-  const [showQuickMeals, setShowQuickMeals] = useState(false);
-  const [showMealPrep, setShowMealPrep] = useState(false);
-  const [sortBy, setSortBy] = useState<'price' | 'savings' | 'name'>('price');
+  
+  // Initialize state from URL params or defaults
+  const [selectedCategory, setSelectedCategory] = useState(() => searchParams.get('category') || 'all');
+  const [selectedChain, setSelectedChain] = useState(() => searchParams.get('chain') || 'all');
+  const [maxPrice, setMaxPrice] = useState(() => parseInt(searchParams.get('maxPrice') || '30', 10));
+  const [showQuickMeals, setShowQuickMeals] = useState(() => searchParams.get('quickMeals') === 'true');
+  const [showMealPrep, setShowMealPrep] = useState(() => searchParams.get('mealPrep') === 'true');
+  const [sortBy, setSortBy] = useState<'savings' | 'name'>(() => (searchParams.get('sortBy') as 'savings' | 'name') || 'savings');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => (searchParams.get('sortDir') as 'asc' | 'desc') || 'desc');
   const [loading, setLoading] = useState(true);
   const [userPLZ, setUserPLZ] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'all' | 'favorites'>('all');
+  const [viewMode, setViewMode] = useState<'all' | 'favorites'>(() => (searchParams.get('view') as 'all' | 'favorites') || 'all');
   const [favoriteDishIds, setFavoriteDishIds] = useState<string[]>([]);
+
+  // Function to update URL params based on current filter/sort state
+  const updateURLParams = (updates: {
+    category?: string;
+    chain?: string;
+    maxPrice?: number;
+    quickMeals?: boolean;
+    mealPrep?: boolean;
+    sortBy?: 'savings' | 'name';
+    sortDir?: 'asc' | 'desc';
+    view?: 'all' | 'favorites';
+  }) => {
+    const newParams = new URLSearchParams(searchParams);
+    
+    if (updates.category !== undefined) {
+      if (updates.category === 'all') {
+        newParams.delete('category');
+      } else {
+        newParams.set('category', updates.category);
+      }
+    }
+    
+    if (updates.chain !== undefined) {
+      if (updates.chain === 'all') {
+        newParams.delete('chain');
+      } else {
+        newParams.set('chain', updates.chain);
+      }
+    }
+    
+    if (updates.maxPrice !== undefined) {
+      if (updates.maxPrice === 30) {
+        newParams.delete('maxPrice');
+      } else {
+        newParams.set('maxPrice', updates.maxPrice.toString());
+      }
+    }
+    
+    if (updates.quickMeals !== undefined) {
+      if (!updates.quickMeals) {
+        newParams.delete('quickMeals');
+      } else {
+        newParams.set('quickMeals', 'true');
+      }
+    }
+    
+    if (updates.mealPrep !== undefined) {
+      if (!updates.mealPrep) {
+        newParams.delete('mealPrep');
+      } else {
+        newParams.set('mealPrep', 'true');
+      }
+    }
+    
+    if (updates.sortBy !== undefined) {
+      if (updates.sortBy === 'savings') {
+        newParams.delete('sortBy');
+      } else {
+        newParams.set('sortBy', updates.sortBy);
+      }
+    }
+    
+    if (updates.sortDir !== undefined) {
+      if (updates.sortDir === 'desc') {
+        newParams.delete('sortDir');
+      } else {
+        newParams.set('sortDir', updates.sortDir);
+      }
+    }
+    
+    if (updates.view !== undefined) {
+      if (updates.view === 'all') {
+        newParams.delete('view');
+      } else {
+        newParams.set('view', updates.view);
+      }
+    }
+    
+    setSearchParams(newParams, { replace: true });
+  };
 
   useEffect(() => {
     if (userId) {
@@ -138,7 +223,7 @@ export default function Index() {
       }));
 
       // Sort dishes
-      const sortedDishes = sortDishes(dishesWithFavorites, sortBy);
+      const sortedDishes = sortDishes(dishesWithFavorites, sortBy, sortDirection);
 
       setDishes(sortedDishes);
     } catch (error: any) {
@@ -149,24 +234,43 @@ export default function Index() {
     }
   };
 
-  const sortDishes = (dishes: Dish[], sort: typeof sortBy): Dish[] => {
+  const sortDishes = (dishes: Dish[], sort: typeof sortBy, direction: 'asc' | 'desc'): Dish[] => {
     const sorted = [...dishes];
     switch (sort) {
-      case 'price':
-        return sorted.sort((a, b) => (a.currentPrice || 0) - (b.currentPrice || 0));
       case 'savings':
-        return sorted.sort((a, b) => (b.savings || 0) - (a.savings || 0));
+        // Sort by totalAggregatedSavings
+        if (direction === 'desc') {
+          return sorted.sort((a, b) => (b.totalAggregatedSavings || 0) - (a.totalAggregatedSavings || 0));
+        } else {
+          return sorted.sort((a, b) => (a.totalAggregatedSavings || 0) - (b.totalAggregatedSavings || 0));
+        }
       case 'name':
-        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+        if (direction === 'asc') {
+          return sorted.sort((a, b) => a.name.localeCompare(b.name));
+        } else {
+          return sorted.sort((a, b) => b.name.localeCompare(a.name));
+        }
       default:
         return sorted;
     }
   };
 
   const handleSortChange = (value: typeof sortBy) => {
+    // When changing sort type, set appropriate default direction
+    const newDirection = value === 'savings' ? 'desc' : 'asc';
     setSortBy(value);
-    const sorted = sortDishes(dishes, value);
-    setDishes(sorted);
+    setSortDirection(newDirection);
+    updateURLParams({ sortBy: value, sortDir: newDirection });
+    // Re-sort existing dishes immediately
+    setDishes((currentDishes) => sortDishes([...currentDishes], value, newDirection));
+  };
+
+  const handleSortDirectionToggle = () => {
+    // Toggle sort direction and re-sort existing dishes immediately
+    const newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    setSortDirection(newDirection);
+    updateURLParams({ sortDir: newDirection });
+    setDishes((currentDishes) => sortDishes([...currentDishes], sortBy, newDirection));
   };
 
   const handlePLZChange = async (plz: string) => {
@@ -244,6 +348,37 @@ export default function Index() {
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign out');
     }
+  };
+
+  // Wrapper functions that update both state and URL params
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    updateURLParams({ category });
+  };
+
+  const handleChainChange = (chain: string) => {
+    setSelectedChain(chain);
+    updateURLParams({ chain });
+  };
+
+  const handleMaxPriceChange = (price: number) => {
+    setMaxPrice(price);
+    updateURLParams({ maxPrice: price });
+  };
+
+  const handleQuickMealsChange = (show: boolean) => {
+    setShowQuickMeals(show);
+    updateURLParams({ quickMeals: show });
+  };
+
+  const handleMealPrepChange = (show: boolean) => {
+    setShowMealPrep(show);
+    updateURLParams({ mealPrep: show });
+  };
+
+  const handleViewModeChange = (mode: 'all' | 'favorites') => {
+    setViewMode(mode);
+    updateURLParams({ view: mode });
   };
 
   if (authLoading || loading) {
@@ -343,17 +478,17 @@ export default function Index() {
                 maxPrice={maxPrice}
                 showQuickMeals={showQuickMeals}
                 showMealPrep={showMealPrep}
-                onCategoryChange={setSelectedCategory}
-                onChainChange={setSelectedChain}
-                onMaxPriceChange={setMaxPrice}
-                onQuickMealsChange={setShowQuickMeals}
-                onMealPrepChange={setShowMealPrep}
+                onCategoryChange={handleCategoryChange}
+                onChainChange={handleChainChange}
+                onMaxPriceChange={handleMaxPriceChange}
+                onQuickMealsChange={handleQuickMealsChange}
+                onMealPrepChange={handleMealPrepChange}
               />
             </div>
           </aside>
 
           <main className="lg:col-span-3">
-            <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as 'all' | 'favorites')} className="w-full">
+            <Tabs value={viewMode} onValueChange={(value) => handleViewModeChange(value as 'all' | 'favorites')} className="w-full">
               <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
                 <div className="flex-1">
                   <TabsList className="mb-4">
@@ -379,15 +514,22 @@ export default function Index() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handleSortDirectionToggle}
+                    title={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                  >
+                    <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+                  </Button>
                   <Select value={sortBy} onValueChange={handleSortChange}>
                     <SelectTrigger className="w-[140px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="price">Price (Low)</SelectItem>
-                      <SelectItem value="savings">Savings (High)</SelectItem>
-                      <SelectItem value="name">Name (A-Z)</SelectItem>
+                      <SelectItem value="savings">Savings</SelectItem>
+                      <SelectItem value="name">Name</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -434,7 +576,7 @@ export default function Index() {
                     </p>
                     <Button 
                       variant="outline" 
-                      onClick={() => setViewMode('all')}
+                      onClick={() => handleViewModeChange('all')}
                       className="mt-4"
                     >
                       Browse All Meals

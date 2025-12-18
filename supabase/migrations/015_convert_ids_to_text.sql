@@ -352,3 +352,7 @@ COMMENT ON COLUMN offers.region_id IS 'Region identifier in TEXT format (referen
 
 
 
+
+
+
+

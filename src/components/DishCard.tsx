@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,12 +24,14 @@ interface DishCardProps {
 
 export function DishCard({ dish, onFavorite }: DishCardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const hasOffers = (dish.availableOffers ?? 0) > 0;
   const hasSavings = dish.totalAggregatedSavings && dish.totalAggregatedSavings > 0;
 
   const handleCardClick = () => {
-    navigate(`/dish/${dish.dish_id}`);
+    // Preserve query params when navigating to dish detail
+    navigate(`/dish/${dish.dish_id}${location.search}`);
   };
 
   const handleFavoriteClick = (e: React.MouseEvent) => {

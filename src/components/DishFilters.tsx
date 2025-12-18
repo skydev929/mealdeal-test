@@ -108,7 +108,7 @@ export function DishFilters({
 
       <Separator />
 
-      <div className="space-y-2">
+      {/* <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>Max Price</Label>
           <span className="text-sm font-medium">€{maxPrice}</span>
@@ -120,7 +120,7 @@ export function DishFilters({
           min={5}
           step={1}
         />
-      </div>
+      </div> */}
     </div>
   );
 }
