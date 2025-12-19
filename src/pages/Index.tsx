@@ -421,8 +421,7 @@ export default function Index() {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     updateURLParams({ page });
-    // Scroll to top of dish grid
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Maintain scroll position when changing pages
   };
 
   if (authLoading || loading) {
