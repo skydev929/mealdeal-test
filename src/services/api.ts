@@ -422,8 +422,8 @@ class ApiService {
           }
         }
 
-        // Sort offers: selected chain offers first, then by price
-        // This ensures selected chain offers appear at the top
+        // Sort offers: selected chain offers first, then by price, then by chain_name and offer_id for stability
+        // This ensures selected chain offers appear at the top, and all offers with identical prices are displayed
         const sortedOffers = [...allOffers].sort((a: any, b: any) => {
           if (chainId) {
             const aIsSelectedChain = a.chain_id === chainId;
@@ -434,10 +434,30 @@ class ApiService {
             if (!aIsSelectedChain && bIsSelectedChain) return 1;
             
             // Within same group (selected chain or not), sort by price
-            return a.price_total - b.price_total;
+            const priceDiff = a.price_total - b.price_total;
+            if (priceDiff !== 0) return priceDiff;
+            
+            // If prices are equal, sort by chain_name (for consistent ordering)
+            const chainNameA = (a.chain_name || '').toLowerCase();
+            const chainNameB = (b.chain_name || '').toLowerCase();
+            const chainDiff = chainNameA.localeCompare(chainNameB);
+            if (chainDiff !== 0) return chainDiff;
+            
+            // If chain names are also equal, sort by offer_id (ensures stable sort and all offers shown)
+            return a.offer_id - b.offer_id;
           }
-          // No chain selected, just sort by price
-          return a.price_total - b.price_total;
+          // No chain selected, sort by price, then chain_name, then offer_id
+          const priceDiff = a.price_total - b.price_total;
+          if (priceDiff !== 0) return priceDiff;
+          
+          // If prices are equal, sort by chain_name
+          const chainNameA = (a.chain_name || '').toLowerCase();
+          const chainNameB = (b.chain_name || '').toLowerCase();
+          const chainDiff = chainNameA.localeCompare(chainNameB);
+          if (chainDiff !== 0) return chainDiff;
+          
+          // If chain names are also equal, sort by offer_id (ensures stable sort and all offers shown)
+          return a.offer_id - b.offer_id;
         });
 
         // Process ALL offers with per-unit prices

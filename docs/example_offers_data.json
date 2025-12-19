@@ -1,0 +1,182 @@
+{
+  "scenario": "Multiple offers with identical prices for the same ingredient",
+  "ingredient": {
+    "ingredient_id": "tomaten",
+    "ingredient_name": "Tomaten",
+    "unit_default": "kg",
+    "price_baseline_per_unit": 3.99
+  },
+  "raw_offers_from_database": [
+    {
+      "offer_id": 101,
+      "ingredient_id": "tomaten",
+      "chain_id": "aldi",
+      "price_total": 2.99,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "source": "aldi_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "ALDI-12345",
+      "region_id": "region_1"
+    },
+    {
+      "offer_id": 102,
+      "ingredient_id": "tomaten",
+      "chain_id": "lidl",
+      "price_total": 2.99,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "source": "lidl_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "LIDL-67890",
+      "region_id": "region_1"
+    },
+    {
+      "offer_id": 103,
+      "ingredient_id": "tomaten",
+      "chain_id": "rewe",
+      "price_total": 2.99,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "source": "rewe_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "REWE-11111",
+      "region_id": "region_1"
+    },
+    {
+      "offer_id": 104,
+      "ingredient_id": "tomaten",
+      "chain_id": "edeka",
+      "price_total": 3.49,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "source": "edeka_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "EDEKA-22222",
+      "region_id": "region_1"
+    }
+  ],
+  "chain_names_mapping": {
+    "aldi": "Aldi",
+    "lidl": "Lidl",
+    "rewe": "Rewe",
+    "edeka": "Edeka"
+  },
+  "final_processed_offers": [
+    {
+      "offer_id": 101,
+      "chain_id": "aldi",
+      "chain_name": "Aldi",
+      "price_total": 2.99,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "price_per_unit": 2.99,
+      "source": "aldi_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "ALDI-12345",
+      "is_lowest_price": true
+    },
+    {
+      "offer_id": 102,
+      "chain_id": "lidl",
+      "chain_name": "Lidl",
+      "price_total": 2.99,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "price_per_unit": 2.99,
+      "source": "lidl_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "LIDL-67890",
+      "is_lowest_price": false
+    },
+    {
+      "offer_id": 103,
+      "chain_id": "rewe",
+      "chain_name": "Rewe",
+      "price_total": 2.99,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "price_per_unit": 2.99,
+      "source": "rewe_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "REWE-11111",
+      "is_lowest_price": false
+    },
+    {
+      "offer_id": 104,
+      "chain_id": "edeka",
+      "chain_name": "Edeka",
+      "price_total": 3.49,
+      "pack_size": 1.0,
+      "unit_base": "kg",
+      "price_per_unit": 3.49,
+      "source": "edeka_de",
+      "valid_from": "2025-01-01",
+      "valid_to": "2025-01-31",
+      "source_ref_id": "EDEKA-22222",
+      "is_lowest_price": false
+    }
+  ],
+  "final_dish_ingredient_object": {
+    "dish_id": "pasta_with_tomatoes",
+    "ingredient_id": "tomaten",
+    "ingredient_name": "Tomaten",
+    "unit_default": "kg",
+    "price_baseline_per_unit": 3.99,
+    "offer_price_per_unit": 2.99,
+    "savings_per_unit": 1.00,
+    "has_offer": true,
+    "all_offers": [
+      {
+        "offer_id": 101,
+        "chain_name": "Aldi",
+        "price_per_unit": 2.99,
+        "unit_base": "kg",
+        "is_lowest_price": true
+      },
+      {
+        "offer_id": 102,
+        "chain_name": "Lidl",
+        "price_per_unit": 2.99,
+        "unit_base": "kg",
+        "is_lowest_price": false
+      },
+      {
+        "offer_id": 103,
+        "chain_name": "Rewe",
+        "price_per_unit": 2.99,
+        "unit_base": "kg",
+        "is_lowest_price": false
+      },
+      {
+        "offer_id": 104,
+        "chain_name": "Edeka",
+        "price_per_unit": 3.49,
+        "unit_base": "kg",
+        "is_lowest_price": false
+      }
+    ]
+  },
+  "sorting_explanation": {
+    "when_no_chain_selected": [
+      "1. Sort by price_total (ascending)",
+      "2. If prices are equal, sort by chain_name (alphabetically)",
+      "3. If both price and chain_name are equal, sort by offer_id (ascending)"
+    ],
+    "when_chain_selected": [
+      "1. Selected chain offers come first",
+      "2. Within each group (selected chain / others), sort by price_total",
+      "3. If prices are equal, sort by chain_name",
+      "4. If both price and chain_name are equal, sort by offer_id"
+    ],
+    "result_for_example_data": "All 3 offers with price 2.99 are displayed in order: Aldi, Lidl, Rewe (alphabetically)"
+  }
+}
+
