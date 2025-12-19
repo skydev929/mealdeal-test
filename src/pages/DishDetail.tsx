@@ -495,10 +495,10 @@ export default function DishDetail() {
                         const hasSavings = ing.savings_per_unit !== undefined && ing.savings_per_unit > 0;
                         
                         return (
-                          <div
-                            key={ing.ingredient_id}
-                            className="p-4 rounded-lg border bg-muted/30 hover:bg-accent/50 transition-colors space-y-2"
-                          >
+                        <div
+                          key={ing.ingredient_id}
+                          className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors space-y-2"
+                        >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
