@@ -601,11 +601,11 @@ export default function DishDetail() {
                                     );
                                   })}
                                 </div>
-                                {ing.all_offers.length > 1 && (
+                                {/* {ing.all_offers.length > 1 && (
                                   <div className="text-xs text-muted-foreground italic pt-1">
                                     Note: The lowest price offer (marked "Best Price") is used for savings calculation.
                                   </div>
-                                )}
+                                )} */}
                               </div>
                             )}
                             
