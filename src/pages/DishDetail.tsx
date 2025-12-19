@@ -170,14 +170,6 @@ export default function DishDetail() {
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              <Button variant="ghost" size="icon" onClick={handleFavorite}>
-                <Heart
-                  className={cn(
-                    'h-5 w-5',
-                    isFavorite && 'fill-destructive text-destructive'
-                  )}
-                />
-              </Button>
             </div>
           </div>
         </div>
@@ -204,7 +196,23 @@ export default function DishDetail() {
           <CardHeader>
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
-                <CardTitle className="text-3xl mb-4">{dish.name}</CardTitle>
+                <div className="flex items-center gap-3 mb-4">
+                  <CardTitle className="text-3xl">{dish.name}</CardTitle>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={handleFavorite}
+                    className="shrink-0"
+                    title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                  >
+                    <Heart
+                      className={cn(
+                        'h-6 w-6',
+                        isFavorite && 'fill-destructive text-destructive'
+                      )}
+                    />
+                  </Button>
+                </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="secondary">{dish.category}</Badge>
                   {dish.is_quick && (
@@ -553,7 +561,7 @@ export default function DishDetail() {
                                         className={`p-2.5 rounded-md border text-xs ${
                                           isLowestPrice
                                             ? 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800'
-                                            : 'bg-background border-border'
+                                            : 'bg-muted/30 border-border'
                                         }`}
                                       >
                                         <div className="flex items-start justify-between gap-2 mb-1.5">
