@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { api } from '@/services/api';
 import { Loader2 } from 'lucide-react';
 
@@ -23,32 +32,52 @@ export function DataTable() {
   const [data, setData] = useState<Record<string, any>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const itemsPerPage = 50;
 
   useEffect(() => {
     if (selectedTable) {
-      fetchData();
+      setCurrentPage(1); // Reset to page 1 when table changes - this will trigger the fetch in the next useEffect
     }
   }, [selectedTable]);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    if (selectedTable) {
+      fetchData(currentPage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTable, currentPage]);
+
+  const fetchData = async (page: number) => {
     setLoading(true);
     try {
-      const tableData = await api.getTableData(selectedTable, 50);
+      const offset = (page - 1) * itemsPerPage;
+      const result = await api.getTableData(selectedTable, itemsPerPage, offset);
 
-      if (tableData && tableData.length > 0) {
-        setColumns(Object.keys(tableData[0]));
-        setData(tableData);
+      if (result.data && result.data.length > 0) {
+        setColumns(Object.keys(result.data[0]));
+        setData(result.data);
+        setTotalCount(result.count);
       } else {
         setColumns([]);
         setData([]);
+        setTotalCount(0);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
       setColumns([]);
       setData([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
+  };
+
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
   };
 
   return (
@@ -56,7 +85,8 @@ export function DataTable() {
       <CardHeader>
         <CardTitle>Database Viewer</CardTitle>
         <CardDescription>
-          View and inspect database tables (showing first 50 rows)
+          View and inspect database tables
+          {totalCount > 0 && ` (${totalCount} total records, showing page ${currentPage} of ${totalPages})`}
         </CardDescription>
         <div className="pt-4">
           <Select value={selectedTable} onValueChange={setSelectedTable}>
@@ -106,6 +136,68 @@ export function DataTable() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+        )}
+        
+        {!loading && data.length > 0 && totalPages > 1 && (
+          <div className="mt-4 flex justify-center">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (currentPage > 1) handlePageChange(currentPage - 1);
+                    }}
+                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    href="#"
+                  />
+                </PaginationItem>
+                
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                  // Show first page, last page, current page, and pages around current
+                  if (
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handlePageChange(page);
+                          }}
+                          isActive={currentPage === page}
+                          className="cursor-pointer"
+                          href="#"
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    );
+                  } else if (page === currentPage - 2 || page === currentPage + 2) {
+                    return (
+                      <PaginationItem key={page}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    );
+                  }
+                  return null;
+                })}
+                
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (currentPage < totalPages) handlePageChange(currentPage + 1);
+                    }}
+                    className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    href="#"
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         )}
       </CardContent>

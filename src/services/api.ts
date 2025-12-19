@@ -925,15 +925,23 @@ class ApiService {
   }
 
   // ============ ADMIN - DATA TABLES ============
-  async getTableData(tableName: string, limit = 50): Promise<any[]> {
+  async getTableData(tableName: string, limit = 50, offset = 0): Promise<{ data: any[]; count: number }> {
     try {
+      // Get total count
+      const { count, error: countError } = await supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) throw countError;
+
+      // Get paginated data
       const { data, error } = await supabase
         .from(tableName)
         .select('*')
-        .limit(limit);
+        .range(offset, offset + limit - 1);
 
       if (error) throw error;
-      return data || [];
+      return { data: data || [], count: count || 0 };
     } catch (error) {
       console.error(`Error fetching ${tableName}:`, error);
       throw error;
