@@ -269,14 +269,14 @@ export default function DishDetail() {
               )}
 
               {/* Important Notice */}
-              {/* <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
                 <p className="text-sm text-blue-900 dark:text-blue-100">
-                  <strong>Note:</strong> Base prices do not include private label brands, which may explain higher prices. 
-                  Savings are calculated based on prices per kilo/liter/piece.
+                  <strong>Hinweis:</strong>: Die angezeigten Basispreise sind Einheitspreise (z. B. €/kg, €/l, €/Stück) für reguläre Markenprodukte. Eigenmarken oder Sonderangebote sind nicht berücksichtigt. Tatsächliche Preise können je nach Produkt und Packung variieren.
                 </p>
-              </div> */}
+              </div>
             </div>
 
+        
             {dish.notes && (
               <>
                 <Separator className="my-6" />
@@ -607,8 +607,8 @@ export default function DishDetail() {
                                   </div>
                                 )} */}
                               </div>
-                            )}
-                            
+                            )}  
+
                             {/* No additional price info when no offer - already shown as "No Offer" above */}
                           </div>
                         );
