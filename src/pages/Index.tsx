@@ -762,10 +762,22 @@ export default function Index() {
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p className="mb-2">© 2025 MealDeal. Alle Rechte vorbehalten.</p>
           <div className="flex justify-center gap-4">
-            <Link to="/privacy" className="hover:text-primary underline">
+            <Link 
+              to={{
+                pathname: "/privacy",
+                state: { returnSearch: searchParams.toString() }
+              }}
+              className="hover:text-primary underline"
+            >
               Datenschutz
             </Link>
-            <Link to="/terms" className="hover:text-primary underline">
+            <Link 
+              to={{
+                pathname: "/terms",
+                state: { returnSearch: searchParams.toString() }
+              }}
+              className="hover:text-primary underline"
+            >
               Nutzungsbedingungen
             </Link>
           </div>

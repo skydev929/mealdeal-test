@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 export function PrivacyBanner() {
+  const location = useLocation();
   const [showBanner, setShowBanner] = useState(false);
 
   useEffect(() => {
@@ -33,7 +34,13 @@ export function PrivacyBanner() {
             <h3 className="font-semibold mb-1">Cookie-Einstellungen</h3>
             <p className="text-sm text-muted-foreground">
               Wir verwenden Cookies, um Ihre Präferien zu speichern und die Nutzung zu analysieren.{' '}
-              <Link to="/privacy" className="underline hover:text-primary">
+              <Link 
+                to={{
+                  pathname: "/privacy",
+                  state: { returnSearch: location.search.replace(/^\?/, '') }
+                }}
+                className="underline hover:text-primary"
+              >
                 Mehr erfahren
               </Link>
             </p>

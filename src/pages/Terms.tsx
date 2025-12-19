@@ -1,17 +1,31 @@
-import { Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 
 export default function Terms() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const handleBack = () => {
+    // Get saved search params from location state
+    const returnSearch = (location.state as { returnSearch?: string })?.returnSearch;
+    
+    if (returnSearch) {
+      // Restore the saved query parameters
+      navigate(`/${returnSearch ? `?${returnSearch}` : ''}`);
+    } else {
+      // Try to use browser history
+      navigate(-1);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Link to="/">
-          <Button variant="ghost" className="mb-6">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Zurück
-          </Button>
-        </Link>
+        <Button variant="ghost" className="mb-6" onClick={handleBack}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Zurück
+        </Button>
 
         <h1 className="text-4xl font-bold mb-8">Nutzungsbedingungen</h1>
 
@@ -124,12 +138,10 @@ export default function Terms() {
           <p className="text-sm text-muted-foreground mb-4">
             Stand: November 2025
           </p>
-          <Link to="/">
-            <Button>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Zurück zur Startseite
-            </Button>
-          </Link>
+          <Button onClick={handleBack}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Zurück zur Startseite
+          </Button>
         </div>
       </div>
     </div>
