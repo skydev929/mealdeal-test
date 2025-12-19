@@ -136,6 +136,7 @@ class ApiService {
       let query = supabase
         .from('dishes')
         .select('*')
+        .order('name', { ascending: true }) // Order by name to ensure consistent results
         .limit(limit);
 
       // Apply filters

@@ -220,7 +220,9 @@ export default function Index() {
         isMealPrep: showMealPrep ? true : undefined,
       };
 
-      let dishesData = await api.getDishes(filters, 100); 
+      // Fetch all dishes (or a very high limit) to ensure we get all dishes that match filters
+      // The actual filtering happens after fetching based on offers/display criteria
+      let dishesData = await api.getDishes(filters, 10000); 
 
       // Load favorites for user
       const favorites = await api.getFavorites(userId);
