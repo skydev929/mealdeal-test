@@ -377,11 +377,11 @@ export default function DishDetail() {
                                       <div className="flex items-start justify-between gap-2 mb-1.5">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-2 flex-wrap">
-                                            {isLowestPrice && (
+                                            {/* {isLowestPrice && (
                                               <Badge variant="outline" className="text-xs bg-green-600 text-white border-green-600">
                                                 Best Price
                                               </Badge>
-                                            )}
+                                            )} */}
                                             {offer.chain_name && (
                                               <span className="font-medium text-foreground">
                                                 {offer.chain_name}
@@ -424,11 +424,11 @@ export default function DishDetail() {
                                   );
                                 })}
                               </div>
-                              {ing.all_offers.length > 1 && (
+                              {/* {ing.all_offers.length > 1 && (
                                 <div className="text-xs text-muted-foreground italic pt-1">
                                   Note: The lowest price offer (marked "Best Price") is used for savings calculation.
                                 </div>
-                              )}
+                              )} */}
                             </div>
                           )}
                           
