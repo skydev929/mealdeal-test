@@ -331,7 +331,7 @@ export default function DishDetail() {
                             </div>
                             <div className="text-right">
                               {/* Per-unit pricing display (from ingredients table) */}
-                              {ing.price_baseline_per_unit !== undefined && ing.unit_default && (
+                              {ing.has_offer && ing.price_baseline_per_unit !== undefined && ing.unit_default && (
                                 <div className="space-y-1">
                                   <div className="text-sm text-muted-foreground">
                                     Base: €{ing.price_baseline_per_unit.toFixed(2)}/{ing.unit_default}
@@ -350,7 +350,10 @@ export default function DishDetail() {
                                   )}
                                 </div>
                               )}
-                              {(!ing.price_baseline_per_unit || !ing.unit_default) && (
+                              {!ing.has_offer && (
+                                <span className="text-muted-foreground text-sm">No Offer</span>
+                              )}
+                              {(!ing.price_baseline_per_unit || !ing.unit_default) && ing.has_offer && (
                                 <span className="text-muted-foreground text-sm">N/A</span>
                               )}
                             </div>
@@ -465,12 +468,7 @@ export default function DishDetail() {
                             </div>
                           )}
                           
-                          {/* Baseline price info when no offer */}
-                          {!ing.has_offer && ing.price_per_unit_baseline !== undefined && (
-                            <div className="pt-2 border-t text-xs text-muted-foreground">
-                              <span className="font-medium">Price per {ing.unit_default || ing.unit}:</span> €{ing.price_per_unit_baseline.toFixed(2)}
-                            </div>
-                          )}
+                          {/* No additional price info when no offer - already shown as "No Offer" above */}
                         </div>
                       );
                     })}
@@ -512,7 +510,7 @@ export default function DishDetail() {
                               </div>
                               <div className="text-right">
                                 {/* Per-unit pricing display (from ingredients table) */}
-                                {ing.price_baseline_per_unit !== undefined && ing.unit_default && (
+                                {ing.has_offer && ing.price_baseline_per_unit !== undefined && ing.unit_default && (
                                   <div className="space-y-1">
                                     <div className="text-sm text-muted-foreground">
                                       Base: €{ing.price_baseline_per_unit.toFixed(2)}/{ing.unit_default}
@@ -531,7 +529,10 @@ export default function DishDetail() {
                                     )}
                                   </div>
                                 )}
-                                {(!ing.price_baseline_per_unit || !ing.unit_default) && (
+                                {!ing.has_offer && (
+                                  <span className="text-muted-foreground text-sm">No Offer</span>
+                                )}
+                                {(!ing.price_baseline_per_unit || !ing.unit_default) && ing.has_offer && (
                                   <span className="text-muted-foreground text-sm">N/A</span>
                                 )}
                               </div>
@@ -608,12 +609,7 @@ export default function DishDetail() {
                               </div>
                             )}
                             
-                            {/* Baseline price info when no offer */}
-                            {!ing.has_offer && ing.price_baseline_per_unit !== undefined && ing.unit_default && (
-                              <div className="pt-2 border-t text-xs text-muted-foreground">
-                                <span className="font-medium">Price per {ing.unit_default}:</span> €{ing.price_baseline_per_unit.toFixed(2)}
-                              </div>
-                            )}
+                            {/* No additional price info when no offer - already shown as "No Offer" above */}
                           </div>
                         );
                       })}
