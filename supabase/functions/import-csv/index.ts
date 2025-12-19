@@ -90,7 +90,7 @@ function getExpectedColumns(tableType: string): string[] {
     'dish_ingredients': ['dish_id', 'ingredient_id', 'qty', 'unit', 'optional', 'role'], // qty and unit are optional (for assignment only, not calculations)
     'dishes': ['dish_id', 'name', 'category', 'is_quick', 'is_meal_prep', 'season', 'cuisine', 'notes'],
     'ingredients': ['ingredient_id', 'name_canonical', 'unit_default', 'price_baseline_per_unit', 'allergen_tags', 'notes'],
-    'offers': ['region_id', 'ingredient_id', 'price_total', 'pack_size', 'unit_base', 'valid_from', 'valid_to', 'source', 'source_ref_id'],
+    'offers': ['region_id', 'ingredient_id', 'price_total', 'pack_size', 'unit_base', 'valid_from', 'valid_to', 'source', 'source_ref_id', 'chain_id'],
     'postal_codes': ['plz', 'region_id', 'city'],
     'store_region_map': ['store_id', 'region_id'],
     'stores': ['store_id', 'chain_id', 'store_name', 'plz', 'city', 'street', 'lat', 'lon'],
@@ -109,7 +109,7 @@ function getRequiredFields(tableType: string): Set<string> {
     'dish_ingredients': ['dish_id', 'ingredient_id', 'optional', 'role'], // qty and unit are optional (for assignment only, not calculations)
     'dishes': ['dish_id', 'name', 'category', 'is_quick', 'is_meal_prep'],
     'ingredients': ['ingredient_id', 'name_canonical', 'unit_default', 'price_baseline_per_unit'],
-    'offers': ['region_id', 'ingredient_id', 'price_total', 'unit_base', 'source'],
+    'offers': ['region_id', 'ingredient_id', 'price_total', 'unit_base', 'source', 'chain_id'],
     'postal_codes': ['plz', 'region_id', 'city'],
     'store_region_map': ['store_id', 'region_id'],
     'stores': ['store_id', 'chain_id', 'store_name', 'plz', 'city', 'street'],
@@ -550,6 +550,22 @@ serve(async (req) => {
             }
           }
           
+          // Check chain_id exists
+          const { data: chainCheck, error: chainError } = await supabaseClient
+            .from('chains')
+            .select('chain_id')
+            .eq('chain_id', row.chain_id)
+            .single();
+          
+          if (chainError || !chainCheck) {
+            const rowIndex = validRows.indexOf(row) + 2;
+            const errorMsg = `Chain ID "${row.chain_id}" not found in chains table. Make sure you've imported chains first.`;
+            console.error(`Chain validation failed for row:`, row, chainError);
+            result.errors.push(`Row ${rowIndex}: ${errorMsg}`);
+            if (!insertError) insertError = chainError || new Error(errorMsg);
+            continue;
+          }
+          
           // For offers, we need to handle SERIAL offer_id properly
           // upsert doesn't work well with SERIAL columns, so we check first and then insert/update
           // Explicitly create insert/update object with only the fields we want (exclude offer_id, created_at, updated_at)
@@ -563,6 +579,7 @@ serve(async (req) => {
             valid_to: row.valid_to,
             offer_hash: row.offer_hash,
             source: row.source, // source is required
+            chain_id: row.chain_id, // chain_id is required
           };
           
           // Add optional fields only if they exist

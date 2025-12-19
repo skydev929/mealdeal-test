@@ -175,18 +175,32 @@ class ApiService {
         }
       }
 
+      // Get chain_id if chain filter is specified (only if not "all")
+      // When "all" is selected, chainId remains null to show all dishes from all chains
+      let chainId: string | null = null;
+      if (filters?.chain && filters.chain !== 'all') {
+        const chain = await this.getChainByName(filters.chain);
+        if (chain) {
+          chainId = chain.chain_id;
+        }
+      }
+
       // Calculate aggregated savings and filter dishes based on display criteria
       // New requirement: Show dish if at least 1 main ingredient OR 2+ secondary ingredients have offers
+      // When chainId is null (i.e., "All" selected), functions will return all offers regardless of chain
       const dishesWithSavings = await Promise.all(
         (data || []).map(async (dish) => {
-          const pricing = await this.getDishPricing(dish.dish_id, filters?.plz);
+          // Pass chainId (null when "all" is selected, which means no chain filtering)
+          const pricing = await this.getDishPricing(dish.dish_id, filters?.plz, chainId);
           
           // Check if dish should be displayed using should_display_dish function
+          // When chainId is null, it shows dishes with offers from any chain
           let shouldDisplay = false;
           if (regionId) {
             const { data: displayData, error: displayError } = await supabase.rpc('should_display_dish', {
               _dish_id: dish.dish_id,
               _region_id: regionId,
+              _chain_id: chainId, // null when "all" is selected
             });
             if (!displayError && displayData !== null) {
               shouldDisplay = displayData;
@@ -214,76 +228,41 @@ class ApiService {
         filtered = [];
       }
 
-      // Filter by chain if specified (requires checking offers)
+      // Filter by chain if specified (new chain filtering using chain_id from offers table)
+      // When "all" is selected (filters.chain === 'all'), no chain filtering is applied
+      // This means chainId is null, and database functions return all offers from all chains
+      // Only apply additional chain filtering if a specific chain is selected (not "all")
       if (filters?.chain && filters.chain !== 'all') {
-        // Get chain_id from chain name
+        // Get chain_id from chain_name (filters.chain is chain_name)
         const chain = await this.getChainByName(filters.chain);
-        if (chain) {
-          // Get region_ids from PLZ if provided
-          let regionIds: string[] = [];  // Changed from number[] to string[] (region_id is now TEXT)
-          if (filters?.plz) {
-            const { data: postalData } = await supabase
-              .from('postal_codes')
-              .select('region_id')
-              .eq('plz', filters.plz);
-            if (postalData) {
-              regionIds = postalData.map((p) => p.region_id);
-            }
-          }
-
-          // If no PLZ or no regions found, get all regions for this chain
-          if (regionIds.length === 0) {
-            const { data: regions } = await supabase
-              .from('ad_regions')
-              .select('region_id')
-              .eq('chain_id', chain.chain_id);
-            if (regions) {
-              regionIds = regions.map((r) => r.region_id);
-            }
-          }
-
-          if (regionIds.length > 0) {
-            const today = new Date().toISOString().split('T')[0];
-            const dishIds = filtered.map((d) => d.dish_id);
-
-            // Get all ingredient_ids that have offers for this chain/region
-            const { data: offers } = await supabase
-              .from('offers')
-              .select('ingredient_id')
-              .in('region_id', regionIds)
-              .lte('valid_from', today)
-              .gte('valid_to', today);
-
-            if (offers && offers.length > 0) {
-              const ingredientIdsWithOffers = new Set(
-                offers.map((o) => o.ingredient_id)
-              );
-
-              // Get all dish_ingredients that match these ingredients and dishes
-              const { data: dishIngredients } = await supabase
-                .from('dish_ingredients')
-                .select('dish_id')
-                .in('dish_id', dishIds)
-                .in('ingredient_id', Array.from(ingredientIdsWithOffers))
-                .eq('optional', false);
-
-              const dishIdsWithOffers = new Set(
-                (dishIngredients || []).map((di) => di.dish_id)
-              );
-
-              filtered = filtered.filter((dish) => 
-                dishIdsWithOffers.has(dish.dish_id)
-              );
-            } else {
-              // No offers found for this chain/region
-              filtered = [];
-            }
-          } else {
-            // No regions found, filter out all dishes
-            filtered = [];
-          }
+        if (chain && regionId) {
+          // Re-check display criteria with chain_id filter
+          // The database function uses chain_id, but we filter by chain_name in the UI
+          const dishesWithChainFilter = await Promise.all(
+            filtered.map(async (dish) => {
+              const { data: displayData, error: displayError } = await supabase.rpc('should_display_dish', {
+                _dish_id: dish.dish_id,
+                _region_id: regionId,
+                _chain_id: chain.chain_id,
+              });
+              if (!displayError && displayData !== null) {
+                return displayData ? dish : null;
+              }
+              return null;
+            })
+          );
+          
+          filtered = dishesWithChainFilter.filter((d) => d !== null) as typeof filtered;
+        } else if (chain && !regionId) {
+          // No PLZ provided but chain selected - can't filter without region
+          filtered = [];
+        } else {
+          // Chain not found
+          filtered = [];
         }
       }
+      // When "all" is selected, filtered already contains all dishes from all chains
+      // (no additional filtering needed because chainId was null in the previous steps)
 
       // Remove shouldDisplay flag before returning
       return filtered.map(({ shouldDisplay, ...dish }) => dish);
@@ -484,12 +463,14 @@ class ApiService {
 
   async getDishPricing(
     dishId: string,
-    plz?: string | null
+    plz?: string | null,
+    chainId?: string | null
   ): Promise<DishPricing | null> {
     try {
       const { data, error } = await supabase.rpc('calculate_dish_aggregated_savings', {
         _dish_id: dishId,
         _user_plz: plz || null,
+        _chain_id: chainId || null,
       });
 
       if (error) {
@@ -623,7 +604,11 @@ class ApiService {
 
   async getChains(plz?: string | null): Promise<Chain[]> {
     try {
-      // If PLZ is provided, filter chains by region
+      // Get all chains that have active offers
+      // If PLZ is provided, only show chains that have offers in that region
+      let chainIds: string[] = [];
+      const today = new Date().toISOString().split('T')[0];
+      
       if (plz) {
         // Get region_id from PLZ
         const { data: postalData } = await supabase
@@ -634,38 +619,45 @@ class ApiService {
         if (postalData && postalData.length > 0) {
           const regionIds = postalData.map((p) => p.region_id);
 
-          // Get chain_ids from regions
-          const { data: regionsData } = await supabase
-            .from('ad_regions')
+          // Get unique chain_ids from active offers in these regions
+          const { data: offersData } = await supabase
+            .from('offers')
             .select('chain_id')
-            .in('region_id', regionIds);
+            .in('region_id', regionIds)
+            .lte('valid_from', today)
+            .gte('valid_to', today);
 
-          if (regionsData && regionsData.length > 0) {
-            const chainIds = [...new Set(regionsData.map((r) => r.chain_id))];
-
-            // Get chains that match these chain_ids
-            const { data, error } = await supabase
-              .from('chains')
-              .select('*')
-              .in('chain_id', chainIds)
-              .order('chain_name');
-
-            if (error) throw error;
-            return data || [];
+          if (offersData && offersData.length > 0) {
+            chainIds = [...new Set(offersData.map((o) => o.chain_id).filter(Boolean))];
           }
         }
-        // If PLZ doesn't match any region, return empty array
-        return [];
+      } else {
+        // No PLZ provided - get all chains that have active offers
+        const { data: offersData } = await supabase
+          .from('offers')
+          .select('chain_id')
+          .lte('valid_from', today)
+          .gte('valid_to', today);
+
+        if (offersData && offersData.length > 0) {
+          chainIds = [...new Set(offersData.map((o) => o.chain_id).filter(Boolean))];
+        }
       }
 
-      // If no PLZ provided, return all chains
-      const { data, error } = await supabase
-        .from('chains')
-        .select('*')
-        .order('chain_name');
+      // Get chains that match these chain_ids
+      if (chainIds.length > 0) {
+        const { data, error } = await supabase
+          .from('chains')
+          .select('*')
+          .in('chain_id', chainIds)
+          .order('chain_name');
 
-      if (error) throw error;
-      return data || [];
+        if (error) throw error;
+        return data || [];
+      }
+
+      // If no chains found with offers, return empty array
+      return [];
     } catch (error) {
       console.error('Error fetching chains:', error);
       return [];
