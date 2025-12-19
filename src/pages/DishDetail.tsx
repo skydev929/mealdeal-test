@@ -302,16 +302,16 @@ export default function DishDetail() {
           <CardHeader>
             <CardTitle>Ingredients</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              {requiredIngredients.length} required
-              {optionalIngredients.length > 0 && `, ${optionalIngredients.length} optional`}
+              {requiredIngredients.length} main
+              {optionalIngredients.length > 0 && `, ${optionalIngredients.length} side`}
             </p>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {/* Required Ingredients */}
+              {/* Main Ingredients */}
               {requiredIngredients.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3 text-lg">Required</h3>
+                  <h3 className="font-semibold mb-3 text-lg">Main</h3>
                   <div className="space-y-2">
                     {requiredIngredients.map((ing) => {
                       const hasSavings = ing.savings_per_unit !== undefined && ing.savings_per_unit > 0;
@@ -484,12 +484,12 @@ export default function DishDetail() {
                 </div>
               )}
 
-              {/* Optional Ingredients */}
+              {/* Side Ingredients */}
               {optionalIngredients.length > 0 && (
                 <>
                   <Separator />
                   <div>
-                    <h3 className="font-semibold mb-3 text-lg">Optional</h3>
+                    <h3 className="font-semibold mb-3 text-lg">Side</h3>
                     <div className="space-y-2">
                       {optionalIngredients.map((ing) => {
                         const hasSavings = ing.savings_per_unit !== undefined && ing.savings_per_unit > 0;
@@ -503,7 +503,6 @@ export default function DishDetail() {
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-medium text-base">{ing.ingredient_name}</span>
-                                  <Badge variant="outline" className="text-xs">Optional</Badge>
                                   {ing.has_offer && (
                                     <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400">
                                       On Sale
