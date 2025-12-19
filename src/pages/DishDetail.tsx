@@ -145,7 +145,7 @@ export default function DishDetail() {
               </Button>
               <div className="flex items-center gap-2">
                 <ShoppingCart className="h-6 w-6 text-primary" />
-                <h1 className="text-2xl font-bold">MealDeal</h1>
+                <h1 className="text-2xl font-bold">ThriftyWe</h1>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -342,11 +342,11 @@ export default function DishDetail() {
                                       <div className="flex items-start justify-between gap-2 mb-1.5">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-2 flex-wrap">
-                                            {isLowestPrice && (
+                                            {/* {isLowestPrice && (
                                               <Badge variant="outline" className="text-xs bg-green-600 text-white border-green-600">
                                                 Best Price
                                               </Badge>
-                                            )}
+                                            )} */}
                                             {offer.source && (
                                               <span className="font-medium text-foreground">
                                                 {offer.source}
@@ -518,11 +518,11 @@ export default function DishDetail() {
                                         <div className="flex items-start justify-between gap-2 mb-1.5">
                                           <div className="flex-1">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                              {isLowestPrice && (
+                                              {/* {isLowestPrice && (
                                                 <Badge variant="outline" className="text-xs bg-green-600 text-white border-green-600">
                                                   Best Price
                                                 </Badge>
-                                              )}
+                                              )} */}
                                               {offer.source && (
                                                 <span className="font-medium text-foreground">
                                                   {offer.source}

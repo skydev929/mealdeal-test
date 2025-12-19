@@ -7,6 +7,15 @@ import { DishFilters as DishFiltersComponent } from '@/components/DishFilters';
 import { DishCard } from '@/components/DishCard';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { ShoppingCart, Sparkles, LogOut, ArrowUpDown, Heart, User, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,6 +51,10 @@ export default function Index() {
   const [userPLZ, setUserPLZ] = useState<string>('');
   const [viewMode, setViewMode] = useState<'all' | 'favorites'>(() => (searchParams.get('view') as 'all' | 'favorites') || 'all');
   const [favoriteDishIds, setFavoriteDishIds] = useState<string[]>([]);
+  
+  // Pagination state
+  const itemsPerPage = 12;
+  const [currentPage, setCurrentPage] = useState(() => parseInt(searchParams.get('page') || '1', 10));
 
   // Function to update URL params based on current filter/sort state
   const updateURLParams = (updates: {
@@ -53,6 +66,7 @@ export default function Index() {
     sortBy?: 'savings' | 'name';
     sortDir?: 'asc' | 'desc';
     view?: 'all' | 'favorites';
+    page?: number;
   }) => {
     const newParams = new URLSearchParams(searchParams);
     
@@ -226,6 +240,15 @@ export default function Index() {
       const sortedDishes = sortDishes(dishesWithFavorites, sortBy, sortDirection);
 
       setDishes(sortedDishes);
+      
+      // Reset to page 1 when filters change (but not when just changing page)
+      if (currentPage > 1) {
+        const totalPages = Math.ceil(sortedDishes.length / itemsPerPage);
+        if (currentPage > totalPages) {
+          setCurrentPage(1);
+          updateURLParams({ page: 1 });
+        }
+      }
     } catch (error: any) {
       console.error('Error loading dishes:', error);
       toast.error(error?.message || 'Failed to load dishes. Please refresh the page.');
@@ -353,32 +376,51 @@ export default function Index() {
   // Wrapper functions that update both state and URL params
   const handleCategoryChange = (category: string) => {
     setSelectedCategory(category);
-    updateURLParams({ category });
+    setCurrentPage(1); // Reset to page 1 when filter changes
+    updateURLParams({ category, page: 1 });
   };
 
   const handleChainChange = (chain: string) => {
     setSelectedChain(chain);
-    updateURLParams({ chain });
+    setCurrentPage(1); // Reset to page 1 when filter changes
+    updateURLParams({ chain, page: 1 });
   };
 
   const handleMaxPriceChange = (price: number) => {
     setMaxPrice(price);
-    updateURLParams({ maxPrice: price });
+    setCurrentPage(1); // Reset to page 1 when filter changes
+    updateURLParams({ maxPrice: price, page: 1 });
   };
 
   const handleQuickMealsChange = (show: boolean) => {
     setShowQuickMeals(show);
-    updateURLParams({ quickMeals: show });
+    setCurrentPage(1); // Reset to page 1 when filter changes
+    updateURLParams({ quickMeals: show, page: 1 });
   };
 
   const handleMealPrepChange = (show: boolean) => {
     setShowMealPrep(show);
-    updateURLParams({ mealPrep: show });
+    setCurrentPage(1); // Reset to page 1 when filter changes
+    updateURLParams({ mealPrep: show, page: 1 });
   };
 
   const handleViewModeChange = (mode: 'all' | 'favorites') => {
     setViewMode(mode);
-    updateURLParams({ view: mode });
+    setCurrentPage(1); // Reset to page 1 when view changes
+    updateURLParams({ view: mode, page: 1 });
+  };
+
+  // Calculate pagination
+  const totalPages = Math.ceil(dishes.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedDishes = dishes.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    updateURLParams({ page });
+    // Scroll to top of dish grid
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   if (authLoading || loading) {
@@ -537,7 +579,7 @@ export default function Index() {
 
               <TabsContent value="all" className="mt-0">
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {dishes.map((dish) => (
+                  {paginatedDishes.map((dish) => (
                     <DishCard key={dish.dish_id} dish={dish} onFavorite={handleFavorite} />
                   ))}
                 </div>
@@ -558,11 +600,73 @@ export default function Index() {
                     )}
                   </div>
                 )}
+
+                {dishes.length > 0 && totalPages > 1 && (
+                  <div className="mt-8">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (currentPage > 1) handlePageChange(currentPage - 1);
+                            }}
+                            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            href="#"
+                          />
+                        </PaginationItem>
+                        
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          // Show first page, last page, current page, and pages around current
+                          if (
+                            page === 1 ||
+                            page === totalPages ||
+                            (page >= currentPage - 1 && page <= currentPage + 1)
+                          ) {
+                            return (
+                              <PaginationItem key={page}>
+                                <PaginationLink
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handlePageChange(page);
+                                  }}
+                                  isActive={currentPage === page}
+                                  className="cursor-pointer"
+                                  href="#"
+                                >
+                                  {page}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          } else if (page === currentPage - 2 || page === currentPage + 2) {
+                            return (
+                              <PaginationItem key={page}>
+                                <PaginationEllipsis />
+                              </PaginationItem>
+                            );
+                          }
+                          return null;
+                        })}
+                        
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (currentPage < totalPages) handlePageChange(currentPage + 1);
+                            }}
+                            className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            href="#"
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="favorites" className="mt-0">
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {dishes.map((dish) => (
+                  {paginatedDishes.map((dish) => (
                     <DishCard key={dish.dish_id} dish={dish} onFavorite={handleFavorite} />
                   ))}
                 </div>
@@ -581,6 +685,68 @@ export default function Index() {
                     >
                       Browse All Meals
                     </Button>
+                  </div>
+                )}
+
+                {dishes.length > 0 && totalPages > 1 && (
+                  <div className="mt-8">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (currentPage > 1) handlePageChange(currentPage - 1);
+                            }}
+                            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            href="#"
+                          />
+                        </PaginationItem>
+                        
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          // Show first page, last page, current page, and pages around current
+                          if (
+                            page === 1 ||
+                            page === totalPages ||
+                            (page >= currentPage - 1 && page <= currentPage + 1)
+                          ) {
+                            return (
+                              <PaginationItem key={page}>
+                                <PaginationLink
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handlePageChange(page);
+                                  }}
+                                  isActive={currentPage === page}
+                                  className="cursor-pointer"
+                                  href="#"
+                                >
+                                  {page}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          } else if (page === currentPage - 2 || page === currentPage + 2) {
+                            return (
+                              <PaginationItem key={page}>
+                                <PaginationEllipsis />
+                              </PaginationItem>
+                            );
+                          }
+                          return null;
+                        })}
+                        
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (currentPage < totalPages) handlePageChange(currentPage + 1);
+                            }}
+                            className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            href="#"
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
                   </div>
                 )}
               </TabsContent>
