@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { api, type Dish, type DishIngredient, type DishPricing } from '@/services/api';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ export default function DishDetail() {
   const { dishId } = useParams<{ dishId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { userId } = useAuth();
   const [dish, setDish] = useState<Dish | null>(null);
   const [ingredients, setIngredients] = useState<DishIngredient[]>([]);
@@ -31,6 +32,8 @@ export default function DishDetail() {
   const [userPLZ, setUserPLZ] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [selectedChainName, setSelectedChainName] = useState<string | null>(null);
+  const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
 
   useEffect(() => {
     if (dishId && userId) {
@@ -38,11 +41,28 @@ export default function DishDetail() {
     }
   }, [dishId, userId]);
 
+  // Load chain information from URL params
+  useEffect(() => {
+    const chainName = searchParams.get('chain');
+    if (chainName && chainName !== 'all') {
+      setSelectedChainName(chainName);
+      // Get chain_id from chain_name
+      api.getChainByName(chainName).then((chain) => {
+        if (chain) {
+          setSelectedChainId(chain.chain_id);
+        }
+      });
+    } else {
+      setSelectedChainName(null);
+      setSelectedChainId(null);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     if (dishId && userId) {
       loadDishData();
     }
-  }, [dishId, userId, userPLZ]);
+  }, [dishId, userId, userPLZ, selectedChainId]);
 
   const loadUserPLZ = async () => {
     if (!userId) return;
@@ -63,8 +83,8 @@ export default function DishDetail() {
     try {
       const [dishData, ingredientsData, pricingData, favorites] = await Promise.all([
         api.getDishById(dishId),
-        api.getDishIngredients(dishId, userPLZ || undefined),
-        api.getDishPricing(dishId, userPLZ || undefined),
+        api.getDishIngredients(dishId, userPLZ || undefined, selectedChainId || undefined),
+        api.getDishPricing(dishId, userPLZ || undefined, selectedChainId || undefined),
         userId ? api.getFavorites(userId) : Promise.resolve([]),
       ]);
 
@@ -164,6 +184,21 @@ export default function DishDetail() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Selected Chain Display */}
+        {selectedChainName && (
+          <Card className="mb-4 border-primary/20 bg-primary/5">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-primary" />
+                <span className="font-semibold text-lg">Showing offers from: {selectedChainName}</span>
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                Savings and prices are calculated based on offers from this chain only.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Dish Header */}
         <Card className="mb-6">
           <CardHeader>
@@ -342,13 +377,18 @@ export default function DishDetail() {
                                       <div className="flex items-start justify-between gap-2 mb-1.5">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-2 flex-wrap">
-                                            {/* {isLowestPrice && (
+                                            {isLowestPrice && (
                                               <Badge variant="outline" className="text-xs bg-green-600 text-white border-green-600">
                                                 Best Price
                                               </Badge>
-                                            )} */}
-                                            {offer.source && (
+                                            )}
+                                            {offer.chain_name && (
                                               <span className="font-medium text-foreground">
+                                                {offer.chain_name}
+                                              </span>
+                                            )}
+                                            {offer.source && (
+                                              <span className="text-muted-foreground">
                                                 {offer.source}
                                               </span>
                                             )}

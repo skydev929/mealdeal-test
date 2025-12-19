@@ -96,9 +96,11 @@ export interface IngredientOffer {
   valid_from?: string;
   valid_to?: string;
   source_ref_id?: string;
+  chain_id?: string; // Chain ID for the offer
+  chain_name?: string; // Chain name for display
   price_per_unit?: number; // Calculated: price_total / pack_size
   calculated_price_for_qty?: number; // Calculated price for the required qty in this dish
-  is_lowest_price: boolean; // Whether this is the lowest price offer (used in calculation)
+  is_lowest_price: boolean; // Whether this is the best price (selected chain offer or overall lowest)
 }
 
 export interface DishIngredient {
@@ -288,7 +290,7 @@ class ApiService {
     }
   }
 
-  async getDishIngredients(dishId: string, plz?: string | null): Promise<DishIngredient[]> {
+  async getDishIngredients(dishId: string, plz?: string | null, chainId?: string | null): Promise<DishIngredient[]> {
     try {
       // Get region_id from PLZ if provided
       let regionIds: string[] = [];  // Changed from number[] to string[] (region_id is now TEXT)
@@ -329,36 +331,70 @@ class ApiService {
       const today = new Date().toISOString().split('T')[0];
 
       // Get ALL current offers for these ingredients if region available
-      // We'll group them by ingredient_id and identify the lowest price one
+      // Show all chains, but prioritize selected chain offers at the top
       const allOffersByIngredient = new Map<string, any[]>();
       
       if (regionIds.length > 0 && ingredientIds.length > 0) {
+        // Fetch ALL offers (no chain filter) so user can see all chain options
         const { data: offersData } = await supabase
           .from('offers')
-          .select('ingredient_id, price_total, pack_size, unit_base, source, valid_from, valid_to, offer_id, source_ref_id')
+          .select('ingredient_id, price_total, pack_size, unit_base, source, valid_from, valid_to, offer_id, source_ref_id, chain_id')
           .in('ingredient_id', ingredientIds)
           .in('region_id', regionIds)
           .lte('valid_from', today)
           .gte('valid_to', today)
           .order('price_total', { ascending: true }); // Order by price ascending
 
+        // Get unique chain_ids and fetch chain names
+        const uniqueChainIds = offersData ? Array.from(new Set(offersData.map((o: any) => o.chain_id).filter(Boolean))) : [];
+        const chainNameMap = new Map<string, string>();
+        if (uniqueChainIds.length > 0) {
+          const { data: chainsData } = await supabase
+            .from('chains')
+            .select('chain_id, chain_name')
+            .in('chain_id', uniqueChainIds);
+          
+          if (chainsData) {
+            chainsData.forEach((chain: any) => {
+              chainNameMap.set(chain.chain_id, chain.chain_name);
+            });
+          }
+        }
+
         if (offersData) {
-          // Group ALL offers by ingredient_id
+          // Group ALL offers by ingredient_id and add chain_name
           for (const offer of offersData) {
+            const offerWithChainName = {
+              ...offer,
+              chain_name: offer.chain_id ? chainNameMap.get(offer.chain_id) || null : null,
+            };
             if (!allOffersByIngredient.has(offer.ingredient_id)) {
               allOffersByIngredient.set(offer.ingredient_id, []);
             }
-            allOffersByIngredient.get(offer.ingredient_id)!.push(offer);
+            allOffersByIngredient.get(offer.ingredient_id)!.push(offerWithChainName);
           }
         }
       }
 
-      // Find the lowest price offer for each ingredient (for calculation)
+      // Find the lowest price offer from selected chain for each ingredient (for calculation)
+      // If no chain selected, use overall lowest price
       const lowestPriceOfferMap = new Map<string, any>();
       for (const [ingredientId, offers] of allOffersByIngredient.entries()) {
         if (offers.length > 0) {
-          // Offers are already sorted by price_total ascending, so first one is lowest
-          lowestPriceOfferMap.set(ingredientId, offers[0]);
+          if (chainId) {
+            // Find lowest price offer from selected chain
+            const selectedChainOffers = offers.filter((o: any) => o.chain_id === chainId);
+            if (selectedChainOffers.length > 0) {
+              // Selected chain offers are already sorted by price, so first one is lowest
+              lowestPriceOfferMap.set(ingredientId, selectedChainOffers[0]);
+            } else {
+              // No offers from selected chain, use overall lowest
+              lowestPriceOfferMap.set(ingredientId, offers[0]);
+            }
+          } else {
+            // No chain selected, use overall lowest price
+            lowestPriceOfferMap.set(ingredientId, offers[0]);
+          }
         }
       }
 
@@ -385,10 +421,38 @@ class ApiService {
           }
         }
 
-        // Process ALL offers with per-unit prices and mark the lowest one
-        const processedOffers: IngredientOffer[] = allOffers.map((offer: any, index: number) => {
+        // Sort offers: selected chain offers first, then by price
+        // This ensures selected chain offers appear at the top
+        const sortedOffers = [...allOffers].sort((a: any, b: any) => {
+          if (chainId) {
+            const aIsSelectedChain = a.chain_id === chainId;
+            const bIsSelectedChain = b.chain_id === chainId;
+            
+            // Selected chain offers come first
+            if (aIsSelectedChain && !bIsSelectedChain) return -1;
+            if (!aIsSelectedChain && bIsSelectedChain) return 1;
+            
+            // Within same group (selected chain or not), sort by price
+            return a.price_total - b.price_total;
+          }
+          // No chain selected, just sort by price
+          return a.price_total - b.price_total;
+        });
+
+        // Process ALL offers with per-unit prices
+        // Mark selected chain offers as "best price" (for display)
+        // Mark the lowest price offer from selected chain (or overall lowest) as used in calculation
+        const calculationOffer = lowestPriceOfferMap.get(di.ingredient_id);
+        const processedOffers: IngredientOffer[] = sortedOffers.map((offer: any) => {
           // Calculate price per unit
           const pricePerUnit = offer.pack_size > 0 ? offer.price_total / offer.pack_size : 0;
+          
+          // Mark as "best price" if:
+          // 1. It's from the selected chain (when chain is selected), OR
+          // 2. It's the overall lowest price offer (when no chain selected)
+          const isFromSelectedChain = chainId && offer.chain_id === chainId;
+          const isLowestPriceForCalculation = calculationOffer && offer.offer_id === calculationOffer.offer_id;
+          const isBestPrice = isFromSelectedChain || (isLowestPriceForCalculation && !chainId);
 
           return {
             offer_id: offer.offer_id,
@@ -399,9 +463,11 @@ class ApiService {
             valid_from: offer.valid_from,
             valid_to: offer.valid_to,
             source_ref_id: offer.source_ref_id,
+            chain_id: offer.chain_id, // Include chain_id for display
+            chain_name: offer.chain_name, // Include chain_name for display
             price_per_unit: pricePerUnit,
             calculated_price_for_qty: undefined, // No longer used - per-unit only
-            is_lowest_price: index === 0, // First offer (lowest price) is used in calculation
+            is_lowest_price: isBestPrice, // Mark selected chain offers or overall lowest as "best price"
           };
         });
 
